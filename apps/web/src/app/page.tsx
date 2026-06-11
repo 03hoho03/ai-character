@@ -1,7 +1,7 @@
-import { SHARED_PACKAGE_NAME, type Persona } from "@ai-character/shared";
+import { PERSONA_TEMPLATES, SHARED_PACKAGE_NAME, type Persona } from "@ai-character/shared";
 
-// shared 타입 소비 확인용 placeholder — #4에서 실제 템플릿 데이터로 교체
-const placeholder: Persona = { id: "placeholder", name: "AI Character" };
+// #4: 시드 첫 템플릿 소비 — #6/#7에서 템플릿 목록 UI로 대체
+const placeholder: Persona = PERSONA_TEMPLATES[0];
 
 export default function Home() {
   return (

@@ -1,0 +1,18 @@
+## Iteration 1 — 2026-06-11
+- tests:
+  - `pnpm --filter @ai-character/shared test` → PASS (vitest 3.2.6, 1 file / 11 tests passed)
+  - `pnpm typecheck` → PASS (packages/shared, apps/api, apps/web 모두 Done)
+  - (회귀 확인) `pnpm --filter @ai-character/api test` → PASS (jest, 2 suites / 12 tests — chat 모듈 무영향)
+- 성공 기준:
+  - [x] shared typecheck + 모노레포 전체 typecheck 통과 — apps/api, apps/web 포함 3개 프로젝트 모두 통과
+  - [x] `Persona` 타입에 8개 필드가 명세대로 존재 — id/name/personality/speechStyle/worldview/greeting/exampleDialogue(ExampleDialogueTurn[]) 필수, `prohibitions?: string[]`만 optional (packages/shared/src/index.ts 직접 확인)
+  - [x] `PERSONA_TEMPLATES` 길이 5, 모든 id `tpl-` prefix, 유니크 — 코드 확인 + 테스트(toHaveLength(5), /^tpl-/, Set 크기 비교)로 커버
+  - [x] 시드 5종 각각 필수 string 필드 non-empty, exampleDialogue ≥1쌍 + user/model non-empty — 테스트가 trim() 후 비어있지 않음까지 검증(공백 문자열도 잡음). 실제 데이터도 직접 읽어 확인 (최소 1쌍: daily/sf/helper, 2쌍: fantasy/romance)
+  - [x] 5개 장르(판타지/일상/로맨스/SF/조력자) 커버 — id 컨벤션 tpl-fantasy-elveria / tpl-daily-haru / tpl-romance-seo / tpl-sf-nova / tpl-helper-dr-jang. 콘텐츠 직접 검수: 판타지(엘프 마법사+아르카니아 세계관), 일상(망원동 카페 사장), 로맨스(대학 캠퍼스 츤데레 선배, 썸 단계), SF(2387년 이주선 관리 AI), 조력자(단계적 설명 튜터) — 전부 장르에 부합하는 자연스러운 한국어 콘텐츠
+  - [x] `pnpm --filter @ai-character/shared test`로 자동 검증 통과 — 11개 테스트 전부 PRD 성공 기준에 매핑됨
+- verdict: PASS
+- notes:
+  - 테스트 강도: 형식적이지 않음. 장르별 정확히 1종(`toHaveLength(1)`), trim 기반 non-empty, prefix+유니크까지 검증. 단, "장르 커버"는 id 네이밍 컨벤션으로만 자동 검증되므로 콘텐츠가 장르와 어긋나도 테스트는 통과 가능 — 이번엔 콘텐츠를 수동 검수해 부합함을 확인. 콘텐츠-장르 일치는 자동화하기 어려운 영역이라 합리적 타협으로 판단.
+  - 하위 호환: 기존 `Persona {id, name}`에 필드 추가만 됨 (제거/개명 없음). 기존 export(SHARED_PACKAGE_NAME, ChatMessage/ChatRequest/ChatResponse) 그대로 유지 — chat 모듈(apps/api/src/chat/*)은 ChatRequest/ChatResponse만 import하므로 무영향, api jest 12개 테스트로 회귀 없음 확인.
+  - 소비처 placeholder 교체: app.controller.ts와 page.tsx 모두 `PERSONA_TEMPLATES[0]`을 `Persona` 타입으로 소비 — 타입 확장이 실소비 경로에서도 검증됨.
+  - 사소한 관찰(비차단): `PERSONA_TEMPLATES[0]` 인덱싱은 noUncheckedIndexedAccess 미사용 전제. vitest 설정 파일 없이 기본 글롭(*.spec.ts)에 의존하지만 현재 구조에선 문제 없음.
