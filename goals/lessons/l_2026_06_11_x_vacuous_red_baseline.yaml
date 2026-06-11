@@ -1,0 +1,58 @@
+lesson_id: l_2026_06_11_x_vacuous_red_baseline
+category: verifier_weakness
+title: "그린필드에서 재귀 러너(pnpm -r) 기반 검증은 패키지 0개일 때 공허하게 PASS — RED 베이스라인 오염"
+created_at: "2026-06-11"
+updated_at: "2026-06-11"
+
+sources:
+  - run_id: dev-cycle/2026_06_11_monorepo-scaffold (비정식 — verify_report 기반 회고)
+    file_ref: "dev-cycle/2026_06_11_monorepo-scaffold/verify_report.md#phase-2-note"
+    quote: |
+      대신 PRD 성공 기준 5개를 `scripts/verify-scaffold.sh`로 인코딩 — 실행 가능한 검증으로 대체.
+      작성 직후 실행 결과: **RED (전 항목 FAIL — 구현 전이므로 정상)**.
+      (실제 RED 실행 로그에는 "PASS: pnpm -r typecheck" / "PASS: pnpm -r build"가 포함 —
+      workspace 패키지 0개 상태에서 재귀 러너가 공허 통과. 메인이 같은 실행 안에서 발견해
+      존재 체크를 보강했으나, 보강 전 스크립트 그대로였다면 GREEN 판정의 2/5가 무의미했음)
+    observed_at: "2026-06-11"
+
+n_cycles: 1
+
+pattern:
+  trigger: "그린필드/스캐폴딩 ticket에서 test-first 검증 스크립트가 재귀 러너(pnpm -r, turbo run 등)로 기준을 측정할 때"
+  symptom: "구현 전 RED 실행인데 일부 기준이 PASS로 출력 (대상 0개 → 러너가 성공 종료)"
+  failure_mode: "RED 베이스라인의 신뢰성 — '구현 전엔 실패해야 정상' 검증이 해당 기준들에 한해 무력화 (이번 케이스 5개 중 2개)"
+
+seed_taxonomy_match: weak_check
+
+confidence: tentative
+confidence_reason: |
+  n=1 단발 관측 (회고 모드, 정식 run.yaml 아님) — 매트릭스상 tentative 상한.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "new_check_item"
+  diff_hint: |
+    다음 dev-cycle Phase 2(Test First)에서: RED 실행 후 "FAIL이어야 할 기준이 PASS인 항목"을
+    명시적으로 점검. 재귀 러너 기반 체크에는 대상 존재 전제 체크(파일/패키지 존재)를 짝으로 강제.
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 dev-cycle Phase 2: RED 베이스라인에서 공허 PASS 항목 유무를 기록하는 한 줄 추가"
+  - "검증 스크립트에 '전제 체크(existence guard)' 패턴 재사용 (scripts/verify-scaffold.sh 참조)"
+
+remaining_ambiguity:
+  - "스캐폴딩 외 일반 기능 ticket에서도 동일 패턴이 나오는지 (테스트 파일 glob 미스매치 등) — 재관측 필요"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    verify(Phase 4 verifier sub-agent)와 같은 세션에서 추출 — 단 evidence는 메인의 RED 실행
+    로그/리포트이고 verifier 판정과 독립적 사건이라 오염 낮음.

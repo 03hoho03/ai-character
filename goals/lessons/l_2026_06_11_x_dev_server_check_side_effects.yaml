@@ -1,0 +1,54 @@
+lesson_id: l_2026_06_11_x_dev_server_check_side_effects
+category: verifier_weakness
+title: "dev 서버 폴링 검증의 두 가지 구멍 — 사전 점유 포트 위양성, pkill -f 광역 매칭 부수 피해"
+created_at: "2026-06-11"
+updated_at: "2026-06-11"
+
+sources:
+  - run_id: dev-cycle/2026_06_11_monorepo-scaffold (비정식 — verify_report 기반 회고)
+    file_ref: "dev-cycle/2026_06_11_monorepo-scaffold/verify_report.md#iteration-1"
+    quote: |
+      스크립트 약점 2건 기록: (a) 검증 전 :3000/:4000에 무관한 서버가 떠 있으면 위양성 가능,
+      (b) `pkill -f "next dev"`가 타 프로젝트 dev 서버를 죽일 수 있음 — 이번 실행에선 둘 다 해당 없음.
+    observed_at: "2026-06-11"
+
+n_cycles: 1
+
+pattern:
+  trigger: "검증 스크립트가 '포트 응답 200'으로 기동 성공을 측정하고, 정리 단계에서 프로세스명 패턴 kill을 쓸 때"
+  symptom: "(a) 검증 대상이 아닌 기존 서버가 같은 포트에 떠 있어도 PASS / (b) pkill -f 패턴이 동일 명령의 타 프로젝트 프로세스까지 종료"
+  failure_mode: "(a) 위양성 — 측정이 '우리 앱의 기동'을 증명하지 못함 / (b) 검증의 비파괴성 — 사용자 환경에 부수 피해"
+
+seed_taxonomy_match: weak_check
+
+confidence: tentative
+confidence_reason: |
+  n=1, 독립 verifier의 지적 (실해는 미발생 — 잠재 약점 관측). 매트릭스상 tentative.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "new_check_item"
+  diff_hint: |
+    검증 스크립트 작성 규약 2줄:
+    1) 서버 기동 체크 전 포트 선점 여부 사전 확인 (점유 시 즉시 FAIL-with-reason, 위양성 차단)
+    2) 정리는 패턴 pkill 대신 기동 시 기록한 PID(들)만 종료
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "#2a/#2b dev-cycle의 검증 스크립트(서버 기동 포함)에서 포트 사전 체크 + PID 기반 정리 적용"
+
+remaining_ambiguity:
+  - "PID 기반 정리 시 자식 프로세스 트리(next dev → worker) 누락 가능성 — 구현 시 확인"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    이 lesson 자체가 verifier의 지적에서 나옴 (verifier 독립성은 유지됐으나 같은 세션).

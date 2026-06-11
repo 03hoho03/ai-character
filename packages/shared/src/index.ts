@@ -9,3 +9,19 @@ export interface Persona {
 }
 
 export const SHARED_PACKAGE_NAME = '@ai-character/shared';
+
+/** Chat API contract (#2a) — web/api가 공유하는 단일 출처 */
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export interface ChatRequest {
+  /** 페르소나 system instruction. 조립 로직은 #5 — 여기서는 문자열만 운반 */
+  systemInstruction?: string;
+  messages: ChatMessage[];
+}
+
+export interface ChatResponse {
+  message: ChatMessage;
+}
