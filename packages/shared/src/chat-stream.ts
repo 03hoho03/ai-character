@@ -1,12 +1,18 @@
 import type { ChatMessage } from './index';
 
+/** #13 에러 이벤트의 원인 구분. 프론트는 code로 분기, message는 그대로 노출 가능. */
+export type ChatStreamErrorCode = 'safety_block' | 'timeout' | 'upstream_error';
+
+const ERROR_CODES: readonly string[] = ['safety_block', 'timeout', 'upstream_error'];
+
 /**
- * #12 SSE 스트리밍 이벤트 규약 (정상 경로).
- * 에러/타임아웃/safety-block 이벤트는 #13에서 이 union에 추가된다.
+ * #12 SSE 스트리밍 이벤트 규약 + #13 에러 이벤트.
+ * error는 종결 이벤트 — 이후 done은 오지 않고 스트림이 닫힌다.
  */
 export type ChatStreamEvent =
   | { type: 'delta'; text: string }
-  | { type: 'done'; message: ChatMessage };
+  | { type: 'done'; message: ChatMessage }
+  | { type: 'error'; code: ChatStreamErrorCode; message: string };
 
 /** ChatStreamEvent → SSE wire format. api 송출과 파서 테스트의 단일 출처. */
 export function serializeChatStreamEvent(event: ChatStreamEvent): string {
@@ -68,6 +74,13 @@ function parseEventBlock(block: string): ChatStreamEvent | null {
   } else if (eventType === 'done') {
     const { message } = payload as { message?: ChatMessage };
     if (message && typeof message.content === 'string') return { type: 'done', message };
+  } else if (eventType === 'error') {
+    const { code, message } = payload as { code?: unknown; message?: unknown };
+    if (typeof message === 'string') {
+      // 미지의 code는 upstream_error로 강등 — 규약이 늘어나도 구버전 프론트가 깨지지 않는다
+      const known = typeof code === 'string' && ERROR_CODES.includes(code);
+      return { type: 'error', code: known ? (code as ChatStreamErrorCode) : 'upstream_error', message };
+    }
   }
-  return null; // 알 수 없는 이벤트 (#13 forward-compat)
+  return null; // 알 수 없는 이벤트 (forward-compat)
 }

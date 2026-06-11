@@ -78,3 +78,88 @@ describe('ChatService.chatStream (#12)', () => {
     );
   });
 });
+
+describe('ChatService.chatStream 에러 이벤트 규약 (#13)', () => {
+  const generateContentStream = jest.fn();
+  const client = { models: { generateContentStream } } as never;
+  let service: ChatService;
+
+  beforeEach(() => {
+    generateContentStream.mockReset();
+    service = new ChatService(client, cfg());
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('finishReason SAFETY chunk를 만나면 safety_block error를 송출하고 종료한다 (done 없음)', async () => {
+    async function* chunks() {
+      yield { text: '안녕' };
+      yield { candidates: [{ finishReason: 'SAFETY' }] };
+    }
+    generateContentStream.mockResolvedValue(chunks());
+
+    const events = await collect(await service.chatStream(baseRequest));
+
+    expect(events).toEqual([
+      { type: 'delta', text: '안녕' },
+      { type: 'error', code: 'safety_block', message: expect.any(String) },
+    ]);
+  });
+
+  it('promptFeedback.blockReason이 있으면 safety_block error를 송출한다', async () => {
+    async function* chunks() {
+      yield { promptFeedback: { blockReason: 'SAFETY' } };
+    }
+    generateContentStream.mockResolvedValue(chunks());
+
+    const events = await collect(await service.chatStream(baseRequest));
+
+    expect(events).toEqual([
+      { type: 'error', code: 'safety_block', message: expect.any(String) },
+    ]);
+  });
+
+  it('chunk 간 무응답 30초 초과 시 timeout error를 송출한다', async () => {
+    jest.useFakeTimers();
+    async function* hang() {
+      yield { text: '안녕' };
+      await new Promise(() => {}); // 다음 chunk가 영원히 오지 않음
+    }
+    generateContentStream.mockResolvedValue(hang());
+
+    const eventsPromise = collect(await service.chatStream(baseRequest));
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    expect(await eventsPromise).toEqual([
+      { type: 'delta', text: '안녕' },
+      { type: 'error', code: 'timeout', message: expect.any(String) },
+    ]);
+  });
+
+  it('업스트림 iteration이 throw하면 upstream_error를 송출한다 (done 없음)', async () => {
+    async function* failing() {
+      yield { text: '안' };
+      throw new Error('gemini boom');
+    }
+    generateContentStream.mockResolvedValue(failing());
+
+    const events = await collect(await service.chatStream(baseRequest));
+
+    expect(events).toEqual([
+      { type: 'delta', text: '안' },
+      { type: 'error', code: 'upstream_error', message: expect.any(String) },
+    ]);
+  });
+
+  it('텍스트 0자로 정상 종료되면 빈 done 대신 upstream_error를 송출한다', async () => {
+    generateContentStream.mockResolvedValue(mockChunks([undefined, '']));
+
+    const events = await collect(await service.chatStream(baseRequest));
+
+    expect(events).toEqual([
+      { type: 'error', code: 'upstream_error', message: expect.any(String) },
+    ]);
+  });
+});

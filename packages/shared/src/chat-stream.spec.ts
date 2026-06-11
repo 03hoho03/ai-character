@@ -91,3 +91,34 @@ describe('parseChatStream (#12)', () => {
     expect(await collect(streamOf([withUnknown]))).toEqual([EVENTS[0], EVENTS[2]]);
   });
 });
+
+describe('error 이벤트 규약 (#13)', () => {
+  const errorEvent: ChatStreamEvent = {
+    type: 'error',
+    code: 'safety_block',
+    message: '안전 정책에 의해 응답이 차단되었습니다.',
+  };
+
+  it('error를 SSE wire format으로 직렬화한다', () => {
+    expect(serializeChatStreamEvent(errorEvent)).toBe(
+      'event: error\ndata: {"code":"safety_block","message":"안전 정책에 의해 응답이 차단되었습니다."}\n\n',
+    );
+  });
+
+  it('파서가 error 이벤트를 복원한다 (delta 이후 종결 이벤트)', async () => {
+    const wire = serializeChatStreamEvent(EVENTS[0]) + serializeChatStreamEvent(errorEvent);
+    expect(await collect(streamOf([wire]))).toEqual([EVENTS[0], errorEvent]);
+  });
+
+  it('알 수 없는 code는 upstream_error로 강등한다 (forward-compat)', async () => {
+    const wire = 'event: error\ndata: {"code":"future_code","message":"새 에러"}\n\n';
+    expect(await collect(streamOf([wire]))).toEqual([
+      { type: 'error', code: 'upstream_error', message: '새 에러' },
+    ]);
+  });
+
+  it('message가 string이 아닌 error 블록은 무시한다', async () => {
+    const wire = 'event: error\ndata: {"code":"timeout"}\n\n';
+    expect(await collect(streamOf([wire]))).toEqual([]);
+  });
+});

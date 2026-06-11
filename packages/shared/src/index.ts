@@ -37,6 +37,7 @@ export { buildPersonaPrompt, type PersonaPrompt } from './persona-prompt';
 export {
   parseChatStream,
   serializeChatStreamEvent,
+  type ChatStreamErrorCode,
   type ChatStreamEvent,
 } from './chat-stream';
 

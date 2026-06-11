@@ -47,8 +47,17 @@ export class ChatController {
         res.write(serializeChatStreamEvent(event));
       }
     } catch (err) {
-      // 스트림 중간 에러의 SSE 이벤트 규약은 #13 — 여기서는 로그 후 연결 종료
+      // 서비스가 에러를 error 이벤트로 흡수하므로(#13) 여기는 backstop — 가능하면 규약대로 알린 뒤 종료
       this.logger.error('SSE 스트림 중단', err instanceof Error ? err.stack : String(err));
+      if (!abort.signal.aborted && !res.writableEnded) {
+        res.write(
+          serializeChatStreamEvent({
+            type: 'error',
+            code: 'upstream_error',
+            message: 'Gemini 호출에 실패했습니다.',
+          }),
+        );
+      }
     } finally {
       res.end();
     }

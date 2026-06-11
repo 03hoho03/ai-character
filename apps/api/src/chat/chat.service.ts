@@ -8,7 +8,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import { FinishReason, type GenerateContentResponse, type GoogleGenAI } from '@google/genai';
 import type { ChatRequest, ChatResponse, ChatStreamEvent } from '@ai-character/shared';
 import { GENAI_CLIENT } from './chat.constants';
 
@@ -56,7 +56,7 @@ export class ChatService {
   /**
    * #12 스트리밍 경로. Gemini chunk → delta 이벤트, 종료 시 합산 done 이벤트.
    * 503(키 미설정)은 generator 생성 전에 던져 일반 HTTP 에러로 응답된다.
-   * 중간 에러/타임아웃 이벤트 규약은 #13.
+   * 중간 에러/타임아웃/safety-block은 종결 error 이벤트로 송출된다 (#13).
    */
   async chatStream(
     request: ChatRequest,
@@ -78,17 +78,62 @@ export class ChatService {
     return this.toStreamEvents(upstream);
   }
 
+  /**
+   * #13 에러 이벤트 규약: error는 종결 이벤트 — 송출 후 done 없이 스트림을 닫는다.
+   * 타임아웃은 chunk 간 무응답(idle) 30초 기준 (GEMINI_TIMEOUT_MS 재사용).
+   */
   private async *toStreamEvents(
     upstream: AsyncGenerator<GenerateContentResponse>,
   ): AsyncGenerator<ChatStreamEvent> {
     let full = '';
-    for await (const chunk of upstream) {
-      const text = chunk.text;
-      if (!text) continue; // 빈 chunk는 delta 없이 통과 — safety 세분화는 #13
-      full += text;
-      yield { type: 'delta', text };
+    try {
+      while (true) {
+        const next = await this.withTimeout(upstream.next());
+        if (next.done) break;
+        const chunk = next.value;
+
+        if (this.isSafetyBlocked(chunk)) {
+          yield {
+            type: 'error',
+            code: 'safety_block',
+            message: '안전 정책에 의해 응답이 차단되었습니다.',
+          };
+          return;
+        }
+
+        const text = chunk.text;
+        if (!text) continue; // 빈 chunk는 delta 없이 통과
+        full += text;
+        yield { type: 'delta', text };
+      }
+    } catch (err) {
+      const isTimeout = err instanceof GatewayTimeoutException;
+      // 업스트림 에러 원문은 로그로만 — 이벤트에는 안전한 메시지
+      this.logger.error('Gemini 스트림 중단', err instanceof Error ? err.stack : String(err));
+      void upstream.return(undefined).catch(() => undefined); // 타임아웃 시 업스트림 중단 (fire-and-forget)
+      yield isTimeout
+        ? { type: 'error', code: 'timeout', message: 'Gemini 응답이 30초를 초과했습니다.' }
+        : { type: 'error', code: 'upstream_error', message: 'Gemini 호출에 실패했습니다.' };
+      return;
+    }
+
+    if (!full) {
+      // safety 미검출 빈 응답 — 빈 done 대신 에러로 종결
+      yield {
+        type: 'error',
+        code: 'upstream_error',
+        message: 'Gemini가 빈 응답을 반환했습니다.',
+      };
+      return;
     }
     yield { type: 'done', message: { role: 'model', content: full } };
+  }
+
+  private isSafetyBlocked(chunk: GenerateContentResponse): boolean {
+    return (
+      chunk.promptFeedback?.blockReason !== undefined ||
+      chunk.candidates?.[0]?.finishReason === FinishReason.SAFETY
+    );
   }
 
   private requireClient(): GoogleGenAI {
