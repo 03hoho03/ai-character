@@ -8,8 +8,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { GoogleGenAI } from '@google/genai';
-import type { ChatRequest, ChatResponse } from '@ai-character/shared';
+import type { GenerateContentResponse, GoogleGenAI } from '@google/genai';
+import type { ChatRequest, ChatResponse, ChatStreamEvent } from '@ai-character/shared';
 import { GENAI_CLIENT } from './chat.constants';
 
 const GEMINI_TIMEOUT_MS = 30_000;
@@ -24,21 +24,13 @@ export class ChatService {
   ) {}
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
-    if (!this.client) {
-      throw new ServiceUnavailableException(
-        'GEMINI_API_KEY가 설정되지 않았습니다. apps/api/.env를 확인하세요 (.env.example 참조).',
-      );
-    }
-
+    const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
-    const contents = request.messages.map((m) => ({
-      role: m.role,
-      parts: [{ text: m.content }],
-    }));
+    const contents = this.toContents(request);
 
     try {
       const result = await this.withTimeout(
-        this.client.models.generateContent({
+        client.models.generateContent({
           model,
           contents,
           ...(request.systemInstruction !== undefined
@@ -59,6 +51,60 @@ export class ChatService {
       this.logger.error('Gemini 호출 실패', err instanceof Error ? err.stack : String(err));
       throw new BadGatewayException('Gemini 호출에 실패했습니다.');
     }
+  }
+
+  /**
+   * #12 스트리밍 경로. Gemini chunk → delta 이벤트, 종료 시 합산 done 이벤트.
+   * 503(키 미설정)은 generator 생성 전에 던져 일반 HTTP 에러로 응답된다.
+   * 중간 에러/타임아웃 이벤트 규약은 #13.
+   */
+  async chatStream(
+    request: ChatRequest,
+    signal?: AbortSignal,
+  ): Promise<AsyncGenerator<ChatStreamEvent>> {
+    const client = this.requireClient();
+    const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
+
+    const upstream = await client.models.generateContentStream({
+      model,
+      contents: this.toContents(request),
+      config: {
+        ...(request.systemInstruction !== undefined
+          ? { systemInstruction: request.systemInstruction }
+          : {}),
+        ...(signal ? { abortSignal: signal } : {}),
+      },
+    });
+    return this.toStreamEvents(upstream);
+  }
+
+  private async *toStreamEvents(
+    upstream: AsyncGenerator<GenerateContentResponse>,
+  ): AsyncGenerator<ChatStreamEvent> {
+    let full = '';
+    for await (const chunk of upstream) {
+      const text = chunk.text;
+      if (!text) continue; // 빈 chunk는 delta 없이 통과 — safety 세분화는 #13
+      full += text;
+      yield { type: 'delta', text };
+    }
+    yield { type: 'done', message: { role: 'model', content: full } };
+  }
+
+  private requireClient(): GoogleGenAI {
+    if (!this.client) {
+      throw new ServiceUnavailableException(
+        'GEMINI_API_KEY가 설정되지 않았습니다. apps/api/.env를 확인하세요 (.env.example 참조).',
+      );
+    }
+    return this.client;
+  }
+
+  private toContents(request: ChatRequest) {
+    return request.messages.map((m) => ({
+      role: m.role,
+      parts: [{ text: m.content }],
+    }));
   }
 
   private withTimeout<T>(promise: Promise<T>): Promise<T> {
