@@ -33,6 +33,7 @@ export interface Persona {
 }
 
 export { PERSONA_TEMPLATES } from './personas';
+export { buildPersonaPrompt, type PersonaPrompt } from './persona-prompt';
 
 export const SHARED_PACKAGE_NAME = '@ai-character/shared';
 
