@@ -1,0 +1,209 @@
+sprint_id: sp_2026_06_11_ai_chat_mvp
+repo: 03hoho03/ai-character
+created_at: 2026-06-11
+created_by: sprint-pm
+sprint_goal: |
+  2주 안에 Gemini 2.5 Flash 기반 AI 캐릭터 챗 웹 서비스의 동작하는 MVP를 만든다 —
+  페르소나 샘플 템플릿에서 캐릭터를 만들고, 그 캐릭터와 실시간 대화가 가능한 상태
+  (Next.js 프론트 + NestJS 백엔드).
+length: 2weeks
+
+# === 강제 게이트: 최소 2개 ===
+out_of_scope:
+  - "사용자 인증/멀티 유저 (#10 cut) — 공개 배포 결정 시 재생성"
+  - "대화 세션 DB 영속성 (#9 defer) — 캐릭터는 localStorage, 대화는 휘발성으로 demo 성립"
+  - "제타/크랙 벤치마크 조사 (#8 defer) — MVP가 손에 잡힌 뒤 gap 분석"
+  - "배포/호스팅 — 이번 sprint는 로컬 실행까지만"
+
+# === 이번 sprint에서 실행할 ticket ===
+included:
+  - issue: 1
+    title: "모노레포 스캐폴딩 (Next.js + NestJS + 공용 타입)"
+    rationale: |
+      전 ticket의 기술적 전제. 최소 골격까지만 — tooling 늪 금지.
+    estimated_cycles: 1
+    pm_view:
+      urgency: high
+      value: "모든 후속 작업의 토대. 컨텍스트 스위칭 비용 최소화"
+      dependency: []
+    arch_view:
+      blast_radius: "리포 전체 뼈대 — pnpm-workspace, apps/web, apps/api, packages/shared, 공통 설정"
+      prerequisite: []
+      risk: "모노레포 도구 선택과 shared TS 빌드에서 'tooling 늪' — 순수 pnpm workspace로 못 박을 것"
+
+  - issue: 11
+    title: "[#2a] 비스트리밍 POST /chat — Gemini 2.5 Flash e2e 연결"
+    rationale: |
+      sprint 심장(#2)의 첫 분해분. 외부 API 불확실성을 week 1 초반에 해소.
+      이것만 끝나도 #3~#7 진행 가능.
+    estimated_cycles: 1
+    pm_view:
+      urgency: high
+      value: "Gemini 연동 없으면 제품이 존재하지 않음. 최대 불확실성 조기 해소"
+      dependency: ["#1"]
+    arch_view:
+      blast_radius: "apps/api chat 모듈 + shared DTO — 시스템의 중심축인 API contract 정의"
+      prerequisite: ["#1", "Gemini API 키 발급 및 rate limit 확인"]
+      risk: "비스트리밍으로 먼저 e2e를 뚫는 순서가 필수"
+
+  - issue: 12
+    title: "[#2b] SSE 스트리밍 전환"
+    rationale: |
+      #2 분해분 2/3. 2a로 e2e 검증 후 스트리밍만 격리 작업.
+    estimated_cycles: 1
+    pm_view:
+      urgency: high
+      value: "실시간 대화 체감 품질의 핵심"
+      dependency: ["#11"]
+    arch_view:
+      blast_radius: "chat 모듈 SSE 파이프라인 + 프론트 fetch/ReadableStream 소비"
+      prerequisite: ["#11 (2a)"]
+      risk: "NestJS @Sse는 Observable 기반이라 까다로움 — sprint 단일 최대 병목 후보"
+
+  - issue: 13
+    title: "[#2c] 에러/타임아웃/safety-block SSE 에러 이벤트 규약"
+    rationale: |
+      #2 분해분 3/3. 스트리밍 안정성 마감.
+    estimated_cycles: 1
+    pm_view:
+      urgency: medium
+      value: "에러 시 UX 붕괴 방지"
+      dependency: ["#12"]
+    arch_view:
+      blast_radius: "chat 모듈 에러 경로 + 프론트 에러 상태"
+      prerequisite: ["#12 (2b)"]
+      risk: "Gemini safety-block 응답 형태가 일반 에러와 달라 규약 없이는 프론트가 침묵 실패"
+
+  - issue: 3
+    title: "채팅 화면 UI (메시지 목록, 입력, 스트리밍 표시)"
+    rationale: |
+      goal 문장 그대로의 deliverable. 개발자 주특기 영역 — 2a 전에는 mock으로 병행 가능.
+    estimated_cycles: 2
+    pm_view:
+      urgency: high
+      value: "사용자가 실제로 보고 만지는 핵심 화면. demo 최전선"
+      dependency: ["#1", "#11"]
+    arch_view:
+      blast_radius: "apps/web 채팅 페이지, 메시지 컴포넌트, SSE 소비 로직, 상태 머신"
+      prerequisite: ["#1", "#2 API contract (mock 선행 가능)"]
+      risk: "EventSource는 POST 불가 — fetch 스트림 파싱 방식 명시 필요"
+
+  - issue: 4
+    title: "페르소나 템플릿 데이터 모델 + 샘플 템플릿 5종"
+    rationale: |
+      사용자 메모 명시 요구. 스키마가 #5/#6의 입력 — week 1 안에 확정 필수.
+    estimated_cycles: 1
+    pm_view:
+      urgency: high
+      value: "캐릭터 챗의 차별화 요소이자 첫 사용 경험의 시작점"
+      dependency: ["#1"]
+    arch_view:
+      blast_radius: "packages/shared persona 타입 + 시드 5종 — 코드량 작지만 타입 파급력 리포 최대"
+      prerequisite: ["#1"]
+      risk: "스키마 후변경 시 폼/빌더/시드 연쇄 수정 — '금지사항' 필드를 optional로 처음부터 포함할 것"
+
+  - issue: 5
+    title: "페르소나 → Gemini system instruction 변환 로직"
+    rationale: |
+      #4와 #2를 잇는 접착제, MVP 품질 결정. 첫 버전은 기본 필드 조립 수준으로 제한.
+    estimated_cycles: 1
+    pm_view:
+      urgency: high
+      value: "이게 없으면 템플릿은 장식이고 챗봇은 Gemini 기본 응답"
+      dependency: ["#11", "#4"]
+    arch_view:
+      blast_radius: "buildSystemInstruction 순수 함수 + 테스트 — 격리도 높음"
+      prerequisite: ["#4"]
+      risk: "예시 대화를 system instruction에 욱여넣으면 캐릭터가 예시를 따라 말하는 품질 문제 — few-shot turn 설계를 #2a와 합의"
+
+  - issue: 6
+    title: "캐릭터 생성/편집 폼 (템플릿에서 시작)"
+    rationale: |
+      goal의 절반(템플릿→캐릭터 생성). 저장소는 localStorage로 고정 (#9 defer 전제).
+    estimated_cycles: 2
+    pm_view:
+      urgency: high
+      value: "사용자가 자기 캐릭터를 갖게 되는 순간"
+      dependency: ["#3", "#4"]
+    arch_view:
+      blast_radius: "생성/편집 페이지, 폼 컴포넌트, 템플릿 선택 UI, 저장 레이어(localStorage)"
+      prerequisite: ["#4", "저장 위치 결정: localStorage로 확정"]
+      risk: "숨은 작업은 폼이 아니라 저장소 — localStorage로 못 박지 않으면 백엔드 CRUD로 비대해짐"
+
+  - issue: 7
+    title: "캐릭터 목록 홈 화면"
+    rationale: |
+      MVP 플로우(목록→선택→채팅)를 닫는 마지막 조각. week 2 후반 배치.
+    estimated_cycles: 1
+    pm_view:
+      urgency: medium
+      value: "demo 첫 화면 — 완성도 인상 좌우. 클릭 가능한 목록 수준이면 충분"
+      dependency: ["#4", "#6"]
+    arch_view:
+      blast_radius: "홈 페이지 + 카드 컴포넌트 — 신규 모듈 거의 없는 조립 성격"
+      prerequisite: ["#6 (저장 레이어)", "#4"]
+      risk: "none"
+
+# === cut ===
+cut:
+  - issue: 10
+    title: "사용자 인증 (회원가입/로그인)"
+    reason: |
+      단일 사용자 로컬 MVP에 멀티테넌시 불필요. 전제인 #9(DB)조차 defer 대상이라
+      의존성상으로도 불가능. 자체 인증 구현은 1인 주니어에게 보안상 부적절 —
+      도입 시점엔 관리형(OAuth/Auth.js). 공개 배포 결정 시 재생성.
+    revisit_after: null
+
+# === deferred ===
+deferred:
+  - issue: 8
+    title: "Spike: 제타/크랙 기본 기능 벤치마크 조사"
+    reason: |
+      산출물이 "다음 sprint backlog 후보" — 이번 goal(동작하는 MVP)에 코드 0줄 기여.
+      MVP가 손에 잡힌 뒤에 봐야 gap 분석도 의미 있음. 다음 sprint 첫 작업 후보.
+  - issue: 9
+    title: "대화 세션 저장/이어하기 (DB persistence)"
+    reason: |
+      goal에 영속성 없음. DB+ORM+마이그레이션은 백엔드 경험 얕은 개발자에게 3~4일.
+      sprint 후반 투입 시 동작하던 #6/#7 저장 레이어를 demo 직전에 갈아엎는 최대 회귀 위험.
+      완화: #2a/#6의 타입에 id 필드를 미리 넣어 이전 비용 선납. 다음 sprint 1순위 후보.
+
+# === needs_decomposition ===
+needs_decomposition:
+  - issue: 2
+    title: "NestJS ↔ Gemini 2.5 Flash 연동 (chat proxy + 스트리밍)"
+    suggested_breakdown:
+      - "[#2a → #11] 비스트리밍 POST /chat — Gemini e2e 연결"
+      - "[#2b → #12] SSE 스트리밍 전환"
+      - "[#2c → #13] 에러/타임아웃/safety-block SSE 에러 규약"
+    note: |
+      백엔드 경험 적은 개발자에게 NestJS SSE + Gemini 스트리밍 + 에러 전파를 한 번에
+      시키면 sprint 단일 최대 병목. 2a만으로 #3~#7 진행 가능. child issue #11~#13으로
+      생성되어 milestone에 포함됨 — #2는 tracking parent.
+
+# === 충돌 + 사용자 break ===
+conflicts_resolved:
+  - issue: 2
+    pm_view: "include — sprint 심장, 한 ticket으로 week 1 최우선 배치"
+    arch_view: "decompose — 주니어에게 SSE+스트리밍+에러를 한 번에 시키면 최대 병목. 2a/2b/2c 분해"
+    conflict_axis: "분해 필요성 (ticket 크기 평가)"
+    user_decision: decompose
+    rationale: |
+      Architect 손 들어줌. 2a 비스트리밍 e2e 우선으로 critical path 위험 감소.
+
+# === V1 acceptance gate ===
+acceptance_gate:
+  normalization_accuracy: 1.0      # 10/10 draft 전부 confirm
+  cut_defer_ratio: 0.3             # (1 cut + 2 deferred) / 10
+  conflict_count: 1
+  out_of_scope_count: 4
+  user_attestation: pending
+
+# === 메타 ===
+metadata:
+  lesson_store_consulted: null     # 첫 sprint — lesson store 없음
+  generation_notes: |
+    draft 10건 전부 confirm (수정 0). PM-Arch 충돌 1건(#2) 사용자 break: decompose.
+    Architect의 #7→#6 병합 제안은 사용자가 거부 (독립 ticket 유지).
+    #2는 child #11/#12/#13으로 분해되어 milestone 포함, parent는 tracking 용도.
+    included 9 ticket / 총 estimated_cycles 11 — 2주 1인 기준 타이트하나 가능 범위.
