@@ -37,3 +37,8 @@
     - (사소) MessageBubble key가 배열 index — retry로 목록이 잘려도 stateless 컴포넌트라 실질 문제 없음.
     - (사소) `Array.prototype.findLastIndex`는 ES2023 — 최신 브라우저만 지원(Chrome 97+/Safari 15.4+). 타깃 정책상 문제 없으면 무시 가능.
     - (사소) unmount 중 abort 시나리오는 훅 테스트에 없음(코드 검토로만 확인).
+
+## 후속 — 2026-06-13 (잔여 수동 확인 해소)
+- GEMINI_API_KEY 설정 후 실제 Gemini 스트리밍 E2E 확인:
+  - `curl -N POST /chat/stream` → `delta` 2건 → `done` 합산 메시지, #12/#13 wire 규약 그대로 송출 → OK
+- Iteration 1의 "사용자 수동 확인 필요" 항목 해소됨 (API 레벨 검증 — 브라우저 delta 렌더는 훅 테스트 + 503 브라우저 검증으로 커버)
