@@ -9,6 +9,7 @@ import type { Persona } from './index';
 const base: Persona = {
   id: 'test-1',
   name: '테스트냥',
+  tagline: '골목길 비밀 왕국의 고양이 요정',
   personality: '호기심 많고 장난기 가득한 고양이 요정',
   speechStyle: '문장 끝에 "냥"을 붙이는 발랄한 반말',
   worldview: '고양이들이 비밀 왕국을 이루고 사는 골목길 뒤편의 세계',

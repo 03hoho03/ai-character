@@ -10,6 +10,7 @@ const GENRES = ['fantasy', 'daily', 'romance', 'sf', 'helper'] as const;
 const REQUIRED_STRING_FIELDS = [
   'id',
   'name',
+  'tagline', // #7 카드용 한줄소개
   'personality',
   'speechStyle',
   'worldview',

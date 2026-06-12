@@ -18,6 +18,8 @@ export interface Persona {
   id: string;
   /** 이름 */
   name: string;
+  /** 카드용 한줄소개 (#7) */
+  tagline: string;
   /** 성격 */
   personality: string;
   /** 말투 */
