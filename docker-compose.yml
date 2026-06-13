@@ -1,0 +1,23 @@
+# #14 로컬 개발용 Postgres. `docker compose up -d`로 기동.
+# 연결 문자열은 apps/api/.env 의 DATABASE_URL 참고.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-character-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aicharacter
+      POSTGRES_PASSWORD: aicharacter
+      POSTGRES_DB: aicharacter
+    ports:
+      - '5432:5432'
+    volumes:
+      - ai-character-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aicharacter']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ai-character-pgdata:

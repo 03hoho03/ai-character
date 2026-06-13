@@ -12,6 +12,7 @@ import request from 'supertest';
 import { parseChatStream, type ChatStreamEvent } from '@ai-character/shared';
 import { AppModule } from '../src/app.module';
 import { GENAI_CLIENT } from '../src/chat/chat.constants';
+import { stubPrisma } from './prisma-stub';
 
 const VALID_BODY = { messages: [{ role: 'user', content: '안녕' }] };
 
@@ -46,7 +47,7 @@ describe('POST /chat/stream (mock Gemini)', () => {
   const mockClient = { models: { generateContentStream } };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await stubPrisma(Test.createTestingModule({ imports: [AppModule] }))
       .overrideProvider(GENAI_CLIENT)
       .useValue(mockClient)
       .compile();
@@ -149,7 +150,7 @@ describe('POST /chat/stream (GEMINI_API_KEY 미설정)', () => {
 
   beforeAll(async () => {
     delete process.env.GEMINI_API_KEY;
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await stubPrisma(Test.createTestingModule({ imports: [AppModule] })).compile();
     app = moduleRef.createNestApplication();
     await app.init();
   });

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { stubPrisma } from './prisma-stub';
 
 /**
  * HTTP 계약 테스트 — 실키 없이 검증 가능한 런타임 동작.
@@ -13,7 +14,7 @@ describe('POST /chat (HTTP contract, GEMINI_API_KEY 미설정)', () => {
 
   beforeAll(async () => {
     delete process.env.GEMINI_API_KEY; // 키 미설정 상태 강제
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await stubPrisma(Test.createTestingModule({ imports: [AppModule] })).compile();
     app = moduleRef.createNestApplication();
     await app.init();
   });

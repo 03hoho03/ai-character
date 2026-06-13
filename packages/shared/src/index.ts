@@ -60,3 +60,39 @@ export interface ChatRequest {
 export interface ChatResponse {
   message: ChatMessage;
 }
+
+/**
+ * 대화 영속화 contract (#14) — web/api 공용 단일 출처.
+ * 날짜는 JSON 직렬화 형태(ISO 문자열) 기준.
+ */
+export interface PersistedMessage {
+  id: string;
+  role: ChatMessage['role'];
+  content: string;
+  createdAt: string;
+}
+
+export interface ConversationRecord {
+  id: string;
+  browserId: string;
+  personaId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationWithMessages extends ConversationRecord {
+  messages: PersistedMessage[];
+}
+
+/** POST /conversations 요청 — (browserId, personaId) get-or-create */
+export interface CreateConversationRequest {
+  browserId: string;
+  personaId: string;
+}
+
+/** POST /conversations/:id/messages 요청 */
+export interface AppendMessageRequest {
+  browserId: string;
+  role: ChatMessage['role'];
+  content: string;
+}
