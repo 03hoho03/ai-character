@@ -1,0 +1,93 @@
+sprint_id: sp_2026_06_13_char_share_memory
+repo: 03hoho03/ai-character
+created_at: 2026-06-13
+created_by: sprint-pm
+milestone: sp_2026_06_13_char_share_memory
+sprint_goal: |
+  캐릭터를 서버에 올려 공유 가능하게 만들고(B2), 긴 대화에서도 메모리가 유지되며(B1),
+  답변을 다시 받거나 고쳐쓸 수 있다(B4). docs/benchmark.md(제타/크랙 대비 gap)에서 도출한
+  table-stakes를 메우는 sprint. 인증은 cut 유지(익명 browserId).
+length: 2weeks
+
+# === 강제 게이트: 최소 2개 ===
+out_of_scope:
+  - "인증/회원 시스템 — 익명 browserId 유지. 공유·랭킹 자리잡은 뒤 계정 이전 과제로 별도."
+  - "캐릭터 분기(branching)/대화 되감기 트리 — 데이터 모델·UX 복잡. #18은 선형 편집/재생성까지만."
+  - "사용자 기억 직접 편집 UI(#22) — 자동 요약(#15) 검증 후. 다음 sprint 후보."
+  - "추천 알고리즘/큐레이션 레일, 음성(TTS/STT), 그룹채팅, 수익화/결제 — 코어 이후."
+
+# === 이번 sprint 실행 ticket ===
+included:
+  - issue: 15
+    title: "대화 요약/장기기억 — 자동 요약 주입 + 토큰 가드 (코어 슬라이스)"
+    estimated_size: M
+    pm_view:
+      urgency: high
+      value: "긴 대화 컨텍스트·비용 한계 해소. 양사 공통 table-stakes"
+      dependency: []
+    arch_view:
+      blast_radius: "useChatStream(full-history 전송), chat.service(toContents), shared(요약 contract 신설), schema.prisma(Conversation.summary), conversations.service"
+      risk: "요약이 stateless /chat/stream과 stateful conversations 경계를 가로질러 아키텍처 결정 비용 큼 — 트리거 임계값을 PRD에서 단일값으로 고정"
+      decomposed_from: "원 #15에서 '사용자 기억 직접 편집'을 #22로 분리"
+
+  - issue: 16
+    title: "캐릭터 서버화 백엔드 — Character 모델 + CRUD + 공개/소유 (B2 1/2)"
+    estimated_size: M
+    pm_view:
+      urgency: high
+      value: "공유·탐색·랭킹의 전제. sprint goal B2의 핵심, #17/#19의 열쇠"
+      dependency: []
+    arch_view:
+      blast_radius: "prisma/schema.prisma(Character 신설+isPublic+마이그레이션), 신규 characters 모듈(conversations 패턴 복제), shared(Character DTO)"
+      risk: "browserId는 위조 가능 → 공개/비공개가 약한 보안 경계. 공개 정의는 이번 '목록 노출까지'로 한정"
+
+  - issue: 21
+    title: "캐릭터 프론트 데이터레이어 fetch 전환 + localStorage 마이그레이션 (B2 2/2)"
+    estimated_size: M
+    pm_view:
+      urgency: high
+      value: "백엔드 캐릭터 저장을 실제 사용자 경험으로 연결"
+      dependency: ["#16"]
+    arch_view:
+      blast_radius: "character-store.ts/use-characters.ts(useSyncExternalStore 동기→fetch), 소비처 6개(user-character-list, characters/new, characters/[id]/edit, character-form, chat-resolver)"
+      risk: "character-store 동기 스냅샷 계약을 6개 UI가 의존 — async 전환 시 chat-resolver not-found 게이트 등 연쇄 수정"
+
+  - issue: 18
+    title: "답변 재생성 + 사용자 메시지 편집"
+    estimated_size: S~M
+    pm_view:
+      urgency: high
+      value: "크랙 표준 UX 격차 해소 (sprint goal B4)"
+      dependency: []
+    arch_view:
+      blast_radius: "useChatStream(retry 인프라 재사용), conversations.service(truncate-after+replace 신설), shared contract"
+      risk: "현 영속화 append-only — 편집/재생성 후 restore 시 옛 turn 부활. 저장 정합을 먼저 풀어야 #14와 silent 충돌"
+
+# === deferred (issue 유지, Milestone 미할당) ===
+deferred:
+  - issue: 17
+    title: "캐릭터 탐색 — 검색 + 태그/카테고리 + 인기 랭킹"
+    reason: "#16에 강하게 종속. 공개 캐릭터 풀이 sprint 후반에야 존재 → 코어 3종 위협. 공유 자리잡힌 다음 sprint 1순위."
+    revisit_after: "#16, #21"
+  - issue: 19
+    title: "안전필터/콘텐츠 정책"
+    reason: "공개 정의를 '목록 노출까지'로 좁혀 긴급도 하락. #16(성인/일반 분리 컬럼) 종속. 다음 sprint에서 '공개 캐릭터 채팅 허용'과 묶음."
+    revisit_after: "#16"
+  - issue: 20
+    title: "멀티모달 — 대화→이미지 생성"
+    reason: "기본기 아닌 차별화 epic, 전 스택 text-only 가정 재설계급. (PM은 cut 제안, 사용자가 추적 유지 위해 defer 선택)"
+    revisit_after: null
+  - issue: 22
+    title: "사용자 기억 직접 편집 UI"
+    reason: "#15 자동 요약/주입이 먼저 검증돼야 편집 대상 데이터 안정."
+    revisit_after: "#15"
+
+# === cut ===
+cut: []  # PM은 #20 cut 제안했으나 사용자 결정으로 defer 처리
+
+# === acceptance gate ===
+gates:
+  out_of_scope_count: 4        # ≥2 ✓
+  deferred_ratio: "4/8 = 50%"  # cut+deferred ≥30% ✓
+  pm_arch_conflicts: 2         # #16, #20 (≥1 ✓)
+  user_attestation: pending
