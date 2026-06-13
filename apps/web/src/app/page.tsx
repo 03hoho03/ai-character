@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { PERSONA_TEMPLATES } from '@ai-character/shared';
+import { UserCharacterList } from './user-character-list';
 
 // #7 캐릭터 목록 홈 — 카드 그리드 + 새 캐릭터 진입점(#6)
 export default function Home() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 font-sans">
       <h1 className="mb-8 text-3xl font-bold">AI 캐릭터 챗</h1>
+      <UserCharacterList />
+      <h2 className="mb-4 mt-10 text-xl font-semibold">템플릿에서 시작하기</h2>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {PERSONA_TEMPLATES.map((persona) => (
           <li key={persona.id}>
