@@ -4,10 +4,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import type { ChatMessage, Persona } from '@ai-character/shared';
 import { useChatStream } from '@/hooks/useChatStream';
+import { useChatPersistence } from '@/lib/use-chat-persistence';
 
 /** #3 채팅 화면 — 메시지 목록 / 스트리밍 렌더 / 입력 / 에러 배너 */
 export function ChatScreen({ persona }: { persona: Persona }) {
-  const { messages, streamingText, status, error, send, retry } = useChatStream(persona);
+  const persistence = useChatPersistence(persona.id); // #14 복원/저장 연동
+  const { messages, streamingText, status, error, send, retry } = useChatStream(persona, persistence);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 

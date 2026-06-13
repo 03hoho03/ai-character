@@ -157,6 +157,102 @@ describe('useChatStream (#3)', () => {
     expect(result.current.messages).toEqual([greeting, { role: 'user', content: '하나' }]);
   });
 
+  // ── #14 2/2 persistence 주입 ──────────────────────────────
+  describe('persistence 연동 (#14)', () => {
+    const makePersistence = (turns: { role: 'user' | 'model'; content: string }[] = []) => ({
+      restore: vi.fn().mockResolvedValue(turns),
+      onUserMessage: vi.fn(),
+      onModelMessage: vi.fn(),
+    });
+
+    it('마운트 시 restore가 저장 turn을 greeting 뒤에 복원한다', async () => {
+      const persistence = makePersistence([
+        { role: 'user', content: '이전 질문' },
+        { role: 'model', content: '이전 답변' },
+      ]);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+
+      await waitFor(() =>
+        expect(result.current.messages).toEqual([
+          greeting,
+          { role: 'user', content: '이전 질문' },
+          { role: 'model', content: '이전 답변' },
+        ]),
+      );
+      expect(persistence.restore).toHaveBeenCalledTimes(1);
+    });
+
+    it('restore가 빈 배열이면 greeting만 유지한다', async () => {
+      const persistence = makePersistence([]);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+      expect(result.current.messages).toEqual([greeting]);
+    });
+
+    it('user 전송 시 onUserMessage, 성공 done 시 onModelMessage를 호출한다', async () => {
+      const persistence = makePersistence([]);
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      expect(persistence.onUserMessage).toHaveBeenCalledWith('안녕');
+
+      act(() => {
+        sse.push({ type: 'done', message: { role: 'model', content: '반가워요' } });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+      expect(persistence.onModelMessage).toHaveBeenCalledWith('반가워요');
+    });
+
+    it('에러로 끝나면 onModelMessage를 호출하지 않는다 (성공 turn만 저장)', async () => {
+      const persistence = makePersistence([]);
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      act(() => {
+        sse.push({ type: 'delta', text: '부분' });
+        sse.push({ type: 'error', code: 'timeout', message: '시간초과' });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('error'));
+      expect(persistence.onModelMessage).not.toHaveBeenCalled();
+    });
+
+    it('persistence가 실패해도(restore reject, onUserMessage throw) 스트리밍은 정상 진행한다', async () => {
+      const persistence = {
+        restore: vi.fn().mockRejectedValue(new Error('api down')),
+        onUserMessage: vi.fn(() => {
+          throw new Error('append failed');
+        }),
+        onModelMessage: vi.fn(),
+      };
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      act(() => {
+        sse.push({ type: 'done', message: { role: 'model', content: '괜찮아요' } });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+      expect(result.current.messages).toEqual([
+        greeting,
+        { role: 'user', content: '안녕' },
+        { role: 'model', content: '괜찮아요' },
+      ]);
+    });
+  });
+
   it('retry()는 실패 턴(partial)을 정리하고 마지막 user 메시지를 재전송한다', async () => {
     const first = sseResponse();
     const second = sseResponse();
