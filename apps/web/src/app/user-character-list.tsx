@@ -35,7 +35,7 @@ export function UserCharacterList() {
               </Link>
               <button
                 type="button"
-                onClick={() => removeUserCharacter(persona.id)}
+                onClick={() => void removeUserCharacter(persona.id)}
                 className="text-red-500 hover:underline"
               >
                 삭제

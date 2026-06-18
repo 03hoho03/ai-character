@@ -8,15 +8,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CharacterForm } from '../../character-form';
 import { removeUserCharacter, saveUserCharacter } from '../../../../lib/character-store';
-import { useHydrated, useUserCharacter } from '../../../../lib/use-characters';
+import { useCharactersLoaded, useUserCharacter } from '../../../../lib/use-characters';
 
 export default function EditCharacterPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const hydrated = useHydrated();
+  const loaded = useCharactersLoaded();
   const persona = useUserCharacter(id);
 
-  if (!hydrated) {
+  if (!loaded) {
     return <main className="p-6 font-sans text-sm text-zinc-500">불러오는 중…</main>;
   }
 
@@ -42,12 +42,12 @@ export default function EditCharacterPage({ params }: { params: Promise<{ id: st
       <CharacterForm
         initial={persona}
         submitLabel="저장하고 채팅 시작"
-        onSubmit={(updated) => {
-          saveUserCharacter(updated);
+        onSubmit={async (updated) => {
+          await saveUserCharacter(updated);
           router.push(`/chat/${updated.id}`);
         }}
-        onDelete={() => {
-          removeUserCharacter(persona.id);
+        onDelete={async () => {
+          await removeUserCharacter(persona.id);
           router.push('/');
         }}
       />

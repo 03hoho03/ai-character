@@ -54,8 +54,8 @@ export default function NewCharacterPage() {
       <CharacterForm
         initial={draft}
         submitLabel="저장하고 채팅 시작"
-        onSubmit={(persona) => {
-          saveUserCharacter(persona);
+        onSubmit={async (persona) => {
+          await saveUserCharacter(persona);
           router.push(`/chat/${persona.id}`);
         }}
       />

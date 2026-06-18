@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * #6 사용자 캐릭터 React 훅 — localStorage를 useSyncExternalStore로 읽어
- * useEffect+setState(=cascading render) 없이 외부 스토어와 동기화.
+ * #21 사용자 캐릭터 React 훅 — 서버 백드 스토어(#16)를 useSyncExternalStore로 구독.
+ * 최초 구독 시 store가 서버 로드를 트리거한다(#6의 localStorage 동기 읽기 대체).
  */
 import { useSyncExternalStore } from 'react';
 import type { Persona } from '@ai-character/shared';
 import {
+  isCharactersLoaded,
   listUserCharacters,
   resolvePersona,
   subscribeUserCharacters,
@@ -21,12 +22,14 @@ export function useUserCharacters(): Persona[] {
   );
 }
 
-/** 클라이언트 마운트 완료 여부 — 서버 스냅샷 false → 클라이언트 true (loading 게이트용) */
-const noop = () => () => {};
-export function useHydrated(): boolean {
+/**
+ * 초기 서버 로드 완료 여부 — 로드 전 false, 완료 후 true.
+ * usr- 캐릭터의 not-found 깜빡임 게이트용(#6 useHydrated의 역할을 '로드 완료'로 확장).
+ */
+export function useCharactersLoaded(): boolean {
   return useSyncExternalStore(
-    noop,
-    () => true,
+    subscribeUserCharacters,
+    isCharactersLoaded,
     () => false,
   );
 }
