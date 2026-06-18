@@ -39,10 +39,10 @@ export class CharactersController {
     return this.characters.getOwned(query.browserId);
   }
 
-  /** 공개 캐릭터 목록(최신순). #24 q 있으면 이름/한줄소개 검색 */
+  /** 공개 캐릭터 목록(최신순). #24 q=이름/한줄소개 검색, #25 category/tag 필터 */
   @Get('public')
   listPublic(@Query() query: PublicSearchQueryDto) {
-    return this.characters.listPublic(query.q);
+    return this.characters.listPublic(query);
   }
 
   /** 단건. 소유자거나 isPublic이면 200, 아니면 404 */

@@ -32,6 +32,13 @@ export interface Persona {
   exampleDialogue: ExampleDialogueTurn[];
   /** 금지사항 — 스키마 후변경 파급 완화를 위해 optional로 선납 (sprint plan arch 합의) */
   prohibitions?: string[];
+  /**
+   * #25 분류 카테고리(단일) — 발견 필터용 메타데이터. 프롬프트에는 주입하지 않는다(buildPersonaPrompt 미참조).
+   * 템플릿/기존 캐릭터 호환을 위해 optional.
+   */
+  category?: string;
+  /** #25 태그(다중) — 발견 필터용 메타데이터. 프롬프트 미주입. 미지정/빈 배열 허용 */
+  tags?: string[];
 }
 
 export { PERSONA_TEMPLATES } from './personas';

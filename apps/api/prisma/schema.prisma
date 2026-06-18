@@ -49,9 +49,14 @@ model Character {
   exampleDialogue Json     // ExampleDialogueTurn[] — { user, model }
   prohibitions    Json? // string[] | null
   isPublic        Boolean  @default(false)
+  // #25 발견 필터용 분류 메타데이터(프롬프트 미주입). category=단일, tags=다중(Postgres 스칼라 배열).
+  category        String?
+  tags            String[] @default([])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([browserId]) // 내 캐릭터 목록
   @@index([isPublic, updatedAt]) // 공개 캐릭터 목록(최신순)
+  @@index([isPublic, category]) // #25 공개+카테고리 필터
+  @@index([tags], type: Gin) // #25 tags has 필터(배열 포함 검색)
 }

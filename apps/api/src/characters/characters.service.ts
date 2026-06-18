@@ -39,20 +39,23 @@ export class CharactersService {
   }
 
   /**
-   * 공개 캐릭터 목록(최신순). #24 q가 있으면 이름/한줄소개에 대소문자 무시 contains 검색.
-   * 비공개는 q 유무와 무관하게 항상 제외(isPublic:true 고정).
+   * 공개 캐릭터 목록(최신순). #24 q=이름/한줄소개 대소문자 무시 contains 검색,
+   * #25 category=등호 / tag=tags 배열 포함(has) 필터. 셋은 AND로 결합한다.
+   * isPublic:true는 어떤 필터 조합에서도 고정 — 비공개는 절대 노출하지 않는다.
    */
-  async listPublic(q?: string) {
-    const keyword = q?.trim();
-    const where: Prisma.CharacterWhereInput = keyword
-      ? {
-          isPublic: true,
-          OR: [
-            { name: { contains: keyword, mode: 'insensitive' } },
-            { tagline: { contains: keyword, mode: 'insensitive' } },
-          ],
-        }
-      : { isPublic: true };
+  async listPublic(params: { q?: string; category?: string; tag?: string } = {}) {
+    const keyword = params.q?.trim();
+    const category = params.category?.trim();
+    const tag = params.tag?.trim();
+    const where: Prisma.CharacterWhereInput = { isPublic: true };
+    if (keyword) {
+      where.OR = [
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { tagline: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
+    if (category) where.category = category;
+    if (tag) where.tags = { has: tag };
     return this.prisma.character.findMany({ where, orderBy: { updatedAt: 'desc' } });
   }
 
@@ -97,6 +100,8 @@ export class CharactersService {
       greeting: dto.greeting,
       exampleDialogue: dto.exampleDialogue as unknown as Prisma.InputJsonValue,
       prohibitions: (dto.prohibitions ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      category: dto.category ?? null,
+      tags: dto.tags ?? [],
       isPublic: dto.isPublic ?? false,
     };
   }

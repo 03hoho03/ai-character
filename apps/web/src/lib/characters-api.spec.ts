@@ -148,6 +148,29 @@ describe('characters-api (#21)', () => {
       expect(String(url)).toBe(`${BASE}/characters/public?q=${encodeURIComponent('마법')}`);
     });
 
+    // #25 category/tag 필터
+    it('category/tag 필터를 ?category=&tag= 쿼리로 동반한다(빈 q는 생략)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+      await fetchPublicCharacters(undefined, { category: '판타지', tag: '마법' });
+
+      const params = new URL(String(fetchMock.mock.calls[0][0])).searchParams;
+      expect(params.get('q')).toBeNull();
+      expect(params.get('category')).toBe('판타지');
+      expect(params.get('tag')).toBe('마법');
+    });
+
+    it('q+category+tag를 함께 보낸다', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+      await fetchPublicCharacters('엘프', { category: '판타지', tag: '마법' });
+
+      const params = new URL(String(fetchMock.mock.calls[0][0])).searchParams;
+      expect(params.get('q')).toBe('엘프');
+      expect(params.get('category')).toBe('판타지');
+      expect(params.get('tag')).toBe('마법');
+    });
+
     it('실패/네트워크 에러면 빈 배열(best-effort)', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
       expect(await fetchPublicCharacters('x')).toEqual([]);

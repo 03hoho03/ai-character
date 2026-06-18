@@ -161,6 +161,12 @@ export function sanitizeForSave(draft: Persona): SanitizeResult {
     .map((rule) => rule.trim())
     .filter((rule) => rule !== '');
 
+  // #25 분류 메타 정규화 — category 공백 제거(빈 값은 undefined), tags 트림·빈값 제거·중복 제거
+  const category = draft.category?.trim() || undefined;
+  const tags = Array.from(
+    new Set((draft.tags ?? []).map((t) => t.trim()).filter((t) => t !== '')),
+  );
+
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -170,6 +176,8 @@ export function sanitizeForSave(draft: Persona): SanitizeResult {
       name,
       exampleDialogue,
       prohibitions: prohibitions.length > 0 ? prohibitions : undefined,
+      category,
+      tags: tags.length > 0 ? tags : undefined,
     },
   };
 }

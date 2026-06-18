@@ -64,6 +64,15 @@ export class CreateCharacterDto implements CreateCharacterRequest {
   prohibitions?: string[];
 
   @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 }
@@ -111,6 +120,15 @@ export class UpdateCharacterDto implements UpdateCharacterRequest {
   prohibitions?: string[];
 
   @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 }
@@ -122,9 +140,20 @@ export class BrowserIdQueryDto {
   browserId!: string;
 }
 
-/** #24 GET /characters/public 검색 쿼리 — q는 선택. 배열 등 비문자열은 거부(400) */
+/**
+ * #24/#25 GET /characters/public 검색·필터 쿼리. 모두 선택, 단일 문자열.
+ * q=이름/한줄소개 검색, category=등호, tag=단일 태그(tags has). 배열 등 비문자열은 거부(400).
+ */
 export class PublicSearchQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  tag?: string;
 }

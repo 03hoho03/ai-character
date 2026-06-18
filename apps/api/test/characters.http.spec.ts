@@ -70,4 +70,51 @@ describe('GET /characters/public (HTTP contract)', () => {
 
     expect(res.status).toBe(400);
   });
+
+  // #25 태그/카테고리 필터
+  it('category=판타지 → 200 + isPublic 고정 + category 등호 필터', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ category: '판타지' });
+
+    expect(res.status).toBe(200);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.isPublic).toBe(true);
+    expect(where.category).toBe('판타지');
+  });
+
+  it('tag=마법 → 200 + tags has 필터(공개 목록만 대상)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ tag: '마법' });
+
+    expect(res.status).toBe(200);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.isPublic).toBe(true);
+    expect(where.tags).toEqual({ has: '마법' });
+  });
+
+  it('q+category+tag 동시 → 검색 OR와 등호/has 필터를 함께 AND한다', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ q: '엘프', category: '판타지', tag: '마법' });
+
+    expect(res.status).toBe(200);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.isPublic).toBe(true);
+    expect(where.category).toBe('판타지');
+    expect(where.tags).toEqual({ has: '마법' });
+    expect(where.OR).toEqual([
+      { name: { contains: '엘프', mode: 'insensitive' } },
+      { tagline: { contains: '엘프', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('tag가 배열(다중 전달)이면 400 (Query DTO @IsString 거부)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query('tag=a&tag=b');
+
+    expect(res.status).toBe(400);
+  });
 });

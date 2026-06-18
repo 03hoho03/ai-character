@@ -210,6 +210,25 @@ describe('character-store (#21 서버 백드)', () => {
         expect(r.persona.prohibitions).toEqual(['진짜']);
       }
     });
+    it('sanitizeForSave: #25 category 트림(빈값 undefined) / tags 트림·빈값·중복 제거', async () => {
+      const { sanitizeForSave } = await load();
+
+      const r = sanitizeForSave(
+        validDraft({ category: '  판타지  ', tags: ['마법', ' 마법 ', '', '엘프'] }),
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.persona.category).toBe('판타지');
+        expect(r.persona.tags).toEqual(['마법', '엘프']);
+      }
+
+      const empty = sanitizeForSave(validDraft({ category: '   ', tags: ['', '  '] }));
+      expect(empty.ok).toBe(true);
+      if (empty.ok) {
+        expect(empty.persona.category).toBeUndefined();
+        expect(empty.persona.tags).toBeUndefined();
+      }
+    });
     it('resolvePersona: 템플릿 우선 + 사용자 목록 합류', async () => {
       const { resolvePersona } = await load();
       const tpl = PERSONA_TEMPLATES[0];

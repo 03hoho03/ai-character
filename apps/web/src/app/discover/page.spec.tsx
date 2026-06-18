@@ -15,8 +15,8 @@ import DiscoverPage from './page';
 
 const mockFetch = fetchPublicCharacters as unknown as ReturnType<typeof vi.fn>;
 
-const char = (name: string, id = `usr-${name}`): CharacterRecord => ({
-  id,
+const char = (name: string, over: Partial<CharacterRecord> = {}): CharacterRecord => ({
+  id: `usr-${name}`,
   browserId: 'owner',
   name,
   tagline: `${name} 소개`,
@@ -29,6 +29,7 @@ const char = (name: string, id = `usr-${name}`): CharacterRecord => ({
   isPublic: true,
   createdAt: '2026-06-18',
   updatedAt: '2026-06-18',
+  ...over,
 });
 
 describe('DiscoverPage (#24)', () => {
@@ -45,7 +46,7 @@ describe('DiscoverPage (#24)', () => {
     expect(mockFetch).toHaveBeenCalled();
   });
 
-  it('검색어 제출 시 fetchPublicCharacters(q)로 다시 조회하고 결과를 렌더한다', async () => {
+  it('검색어 제출 시 fetchPublicCharacters(q, filters)로 다시 조회하고 결과를 렌더한다', async () => {
     mockFetch.mockResolvedValueOnce([char('엘베리아')]); // 초기 로드
     render(<DiscoverPage />);
     await waitFor(() => expect(screen.getByText('엘베리아')).toBeTruthy());
@@ -54,8 +55,41 @@ describe('DiscoverPage (#24)', () => {
     fireEvent.change(screen.getByPlaceholderText('캐릭터 검색'), { target: { value: '마법' } });
     fireEvent.submit(screen.getByRole('search'));
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('마법'));
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('마법', { category: undefined, tag: undefined }),
+    );
     await waitFor(() => expect(screen.getByText('마법사')).toBeTruthy());
+  });
+
+  // #25 태그/카테고리 필터
+  it('태그 칩 클릭 시 해당 tag 필터로 재조회하고 활성 필터를 노출한다', async () => {
+    mockFetch.mockResolvedValueOnce([char('엘베리아', { tags: ['마법'] })]); // 초기
+    render(<DiscoverPage />);
+    await waitFor(() => expect(screen.getByText('#마법')).toBeTruthy());
+
+    mockFetch.mockResolvedValueOnce([char('간달프', { tags: ['마법'] })]); // 태그 필터 결과
+    fireEvent.click(screen.getByText('#마법'));
+
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenLastCalledWith('', { category: undefined, tag: '마법' }),
+    );
+    await waitFor(() => expect(screen.getByText('간달프')).toBeTruthy());
+    // 활성 필터 바에 해제 버튼 노출
+    expect(screen.getByText('#마법 ✕')).toBeTruthy();
+  });
+
+  it('카테고리 칩 클릭 시 해당 category 필터로 재조회한다', async () => {
+    mockFetch.mockResolvedValueOnce([char('엘베리아', { category: '판타지' })]); // 초기
+    render(<DiscoverPage />);
+    await waitFor(() => expect(screen.getByText('판타지')).toBeTruthy());
+
+    mockFetch.mockResolvedValueOnce([char('엘베리아', { category: '판타지' })]);
+    fireEvent.click(screen.getByText('판타지'));
+
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenLastCalledWith('', { category: '판타지', tag: undefined }),
+    );
+    expect(screen.getByText('카테고리: 판타지 ✕')).toBeTruthy();
   });
 
   it('결과가 없으면 빈 상태 문구를 노출한다', async () => {

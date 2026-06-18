@@ -20,12 +20,23 @@ export async function fetchOwnedCharacters(browserId: string): Promise<Character
   }
 }
 
-/** #24 공개 캐릭터 목록/검색(최신순). q 있으면 ?q=로 이름·한줄소개 검색. 실패면 빈 배열 */
-export async function fetchPublicCharacters(q?: string): Promise<CharacterRecord[]> {
+/**
+ * #24/#25 공개 캐릭터 목록/검색·필터(최신순). q=이름·한줄소개 검색, #25 category/tag 필터.
+ * 셋은 함께 보낼 수 있고 서버에서 AND 결합된다. 빈 값은 쿼리에서 생략. 실패면 빈 배열.
+ */
+export async function fetchPublicCharacters(
+  q?: string,
+  filters: { category?: string; tag?: string } = {},
+): Promise<CharacterRecord[]> {
+  const params = new URLSearchParams();
   const keyword = q?.trim();
-  const url = keyword
-    ? `${API_URL}/characters/public?${new URLSearchParams({ q: keyword }).toString()}`
-    : `${API_URL}/characters/public`;
+  const category = filters.category?.trim();
+  const tag = filters.tag?.trim();
+  if (keyword) params.set('q', keyword);
+  if (category) params.set('category', category);
+  if (tag) params.set('tag', tag);
+  const qs = params.toString();
+  const url = qs ? `${API_URL}/characters/public?${qs}` : `${API_URL}/characters/public`;
   try {
     const res = await fetch(url);
     if (!res.ok) return [];

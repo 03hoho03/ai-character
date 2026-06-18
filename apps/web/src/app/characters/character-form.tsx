@@ -12,11 +12,24 @@ import { sanitizeForSave } from '../../lib/character-store';
 const TEXT_FIELDS: { key: keyof Persona; label: string; textarea?: boolean }[] = [
   { key: 'name', label: '이름' },
   { key: 'tagline', label: '한줄소개' },
+  { key: 'category', label: '카테고리 (선택)' },
   { key: 'personality', label: '성격', textarea: true },
   { key: 'speechStyle', label: '말투', textarea: true },
   { key: 'worldview', label: '세계관', textarea: true },
   { key: 'greeting', label: '첫 인사말', textarea: true },
 ];
+
+/** #25 쉼표 구분 입력 문자열 → 태그 배열(트림·빈값 제거·중복 제거) */
+function parseTags(text: string): string[] {
+  return Array.from(
+    new Set(
+      text
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => t !== ''),
+    ),
+  );
+}
 
 const fieldClass =
   'w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900';
@@ -35,6 +48,7 @@ export function CharacterForm({
   onDelete?: () => void;
 }) {
   const [draft, setDraft] = useState<Persona>(initial);
+  const [tagsText, setTagsText] = useState<string>((initial.tags ?? []).join(', '));
   const [errors, setErrors] = useState<string[]>([]);
 
   const setText = (key: keyof Persona, value: string) =>
@@ -65,7 +79,7 @@ export function CharacterForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const result = sanitizeForSave(draft);
+    const result = sanitizeForSave({ ...draft, tags: parseTags(tagsText) });
     if (!result.ok) {
       setErrors(result.errors);
       return;
@@ -94,6 +108,16 @@ export function CharacterForm({
           )}
         </label>
       ))}
+
+      <label className="flex flex-col gap-1">
+        <span className={sectionTitle}>태그 (선택, 쉼표로 구분)</span>
+        <input
+          className={fieldClass}
+          placeholder="예: 판타지, 마법, 엘프"
+          value={tagsText}
+          onChange={(e) => setTagsText(e.target.value)}
+        />
+      </label>
 
       <fieldset className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
