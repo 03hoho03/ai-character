@@ -60,8 +60,13 @@ export interface ChatMessage {
 }
 
 export interface ChatRequest {
-  /** 페르소나 system instruction. 조립 로직은 #5 — 여기서는 문자열만 운반 */
-  systemInstruction?: string;
+  /**
+   * #23 신뢰 소스 조회 키. 서버가 이 id로 persona를 재조회해 system instruction을 재조립한다.
+   * 클라가 instruction을 직접 전송하던 통로를 제거 — `tpl-*`는 템플릿, 그 외는 Character DB.
+   */
+  personaId: string;
+  /** #23 usr-* 비공개 캐릭터 소유 확인용 익명 browserId */
+  browserId: string;
   messages: ChatMessage[];
   /** #15 과거 대화 요약 — 서버가 systemInstruction에 접합해 장기기억으로 주입 */
   conversationSummary?: string;

@@ -8,7 +8,6 @@ import {
   PERSONA_TEMPLATES,
   SUMMARY_RECENT_TURNS,
   SUMMARY_TURN_THRESHOLD,
-  buildPersonaPrompt,
   serializeChatStreamEvent,
   type ChatStreamEvent,
 } from '@ai-character/shared';
@@ -83,7 +82,7 @@ describe('useChatStream (#3)', () => {
     ]);
   });
 
-  it('요청 body에 systemInstruction + fewShot + greeting 포함 히스토리를 담는다', async () => {
+  it('요청 body에 personaId/browserId + history를 담고 systemInstruction/fewShot은 보내지 않는다 (#23)', async () => {
     const sse = sseResponse();
     fetchMock.mockResolvedValueOnce(sse.response);
     const { result } = renderHook(() => useChatStream(persona));
@@ -94,13 +93,13 @@ describe('useChatStream (#3)', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe('http://localhost:4000/chat/stream');
     const body = JSON.parse((init as RequestInit).body as string);
-    const prompt = buildPersonaPrompt(persona);
-    expect(body.systemInstruction).toBe(prompt.systemInstruction);
-    expect(body.messages).toEqual([
-      ...prompt.fewShotMessages,
-      greeting,
-      { role: 'user', content: '안녕' },
-    ]);
+    // 서버가 신뢰 소스에서 재조립 — 클라는 식별자만 보낸다
+    expect(body.personaId).toBe(persona.id);
+    expect(typeof body.browserId).toBe('string');
+    expect(body.browserId.length).toBeGreaterThan(0);
+    expect(body.systemInstruction).toBeUndefined();
+    // history만 전송(fewShot 미포함 — 서버가 prepend)
+    expect(body.messages).toEqual([greeting, { role: 'user', content: '안녕' }]);
   });
 
   it('error 이벤트 시 partial을 메시지로 보존하고 error 상태를 노출한다', async () => {
@@ -293,10 +292,10 @@ describe('useChatStream (#3)', () => {
 
       // 영속: greeting 제외, 직전 user turn까지로 전체 교체(옛 답변 truncate)
       expect(persistence.replace).toHaveBeenCalledWith([{ role: 'user', content: '안녕' }]);
-      // 재요청 히스토리는 마지막 user까지
+      // 재요청 히스토리는 마지막 user까지 (fewShot은 서버가 prepend)
       const body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
-      const prompt = buildPersonaPrompt(persona);
-      expect(body.messages).toEqual([...prompt.fewShotMessages, greeting, { role: 'user', content: '안녕' }]);
+      expect(body.personaId).toBe(persona.id);
+      expect(body.messages).toEqual([greeting, { role: 'user', content: '안녕' }]);
 
       act(() => {
         second.push({ type: 'done', message: { role: 'model', content: '답변2' } });
@@ -332,12 +331,7 @@ describe('useChatStream (#3)', () => {
       // 영속: 편집된 user까지로 전체 교체(후속 model turn truncate)
       expect(persistence.replace).toHaveBeenCalledWith([{ role: 'user', content: '안녕 고침' }]);
       const body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
-      const prompt = buildPersonaPrompt(persona);
-      expect(body.messages).toEqual([
-        ...prompt.fewShotMessages,
-        greeting,
-        { role: 'user', content: '안녕 고침' },
-      ]);
+      expect(body.messages).toEqual([greeting, { role: 'user', content: '안녕 고침' }]);
 
       act(() => {
         second.push({ type: 'done', message: { role: 'model', content: '고친 답변' } });
@@ -399,10 +393,9 @@ describe('useChatStream (#3)', () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
       const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-      const prompt = buildPersonaPrompt(persona2);
-      // conversationSummary 전송 + 최근 N turn만 (full-history 아님)
+      // conversationSummary 전송 + 최근 N turn만 (full-history 아님, fewShot 미포함)
       expect(body.conversationSummary).toBe('이전 요약본');
-      expect(body.messages.length).toBe(prompt.fewShotMessages.length + SUMMARY_RECENT_TURNS);
+      expect(body.messages.length).toBe(SUMMARY_RECENT_TURNS);
       expect(body.messages.slice(-1)[0]).toEqual({ role: 'user', content: '새 질문' });
     });
 
@@ -417,13 +410,8 @@ describe('useChatStream (#3)', () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
       const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-      const prompt = buildPersonaPrompt(persona2);
       expect(body.conversationSummary).toBeUndefined();
-      expect(body.messages).toEqual([
-        ...prompt.fewShotMessages,
-        greeting,
-        { role: 'user', content: '안녕' },
-      ]);
+      expect(body.messages).toEqual([greeting, { role: 'user', content: '안녕' }]);
     });
 
     it('turn 성공 후 저장 turn이 임계를 넘으면 persistence.summarize를 호출한다', async () => {
@@ -488,12 +476,7 @@ describe('useChatStream (#3)', () => {
 
     // 재요청 히스토리에 실패 partial은 빠지고 마지막 user 메시지가 끝에 온다
     const body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
-    const prompt = buildPersonaPrompt(persona);
-    expect(body.messages).toEqual([
-      ...prompt.fewShotMessages,
-      greeting,
-      { role: 'user', content: '안녕' },
-    ]);
+    expect(body.messages).toEqual([greeting, { role: 'user', content: '안녕' }]);
 
     act(() => {
       second.push({ type: 'done', message: { role: 'model', content: '다시 반가워요' } });

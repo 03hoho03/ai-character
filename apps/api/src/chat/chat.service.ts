@@ -5,12 +5,23 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FinishReason, type GenerateContentResponse, type GoogleGenAI } from '@google/genai';
-import type { ChatMessage, ChatRequest, ChatResponse, ChatStreamEvent } from '@ai-character/shared';
-import { GENAI_CLIENT } from './chat.constants';
+import {
+  PERSONA_TEMPLATES,
+  buildPersonaPrompt,
+  type ChatMessage,
+  type ChatRequest,
+  type ChatResponse,
+  type ChatStreamEvent,
+  type ExampleDialogueTurn,
+  type Persona,
+} from '@ai-character/shared';
+import { CharactersService } from '../characters/characters.service';
+import { GENAI_CLIENT, SAFETY_SETTINGS } from './chat.constants';
 
 const GEMINI_TIMEOUT_MS = 30_000;
 
@@ -21,20 +32,27 @@ export class ChatService {
   constructor(
     @Inject(GENAI_CLIENT) private readonly client: GoogleGenAI | null,
     private readonly config: ConfigService,
+    private readonly characters: CharactersService,
   ) {}
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
+    // #23 신뢰 소스에서 persona 재조립 — requireClient보다 먼저 해결해 미존재는 404가 503보다 앞선다
+    const persona = await this.resolvePersona(request.personaId, request.browserId);
+    const prompt = buildPersonaPrompt(persona);
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
-    const contents = this.toContents(request);
-    const systemInstruction = this.buildSystemInstruction(request);
+    const contents = this.toContents([...prompt.fewShotMessages, ...request.messages]);
+    const systemInstruction = this.buildSystemInstruction(
+      prompt.systemInstruction,
+      request.conversationSummary,
+    );
 
     try {
       const result = await this.withTimeout(
         client.models.generateContent({
           model,
           contents,
-          ...(systemInstruction !== undefined ? { config: { systemInstruction } } : {}),
+          config: { systemInstruction, safetySettings: SAFETY_SETTINGS },
         }),
       );
 
@@ -61,15 +79,22 @@ export class ChatService {
     request: ChatRequest,
     signal?: AbortSignal,
   ): Promise<AsyncGenerator<ChatStreamEvent>> {
+    // #23 신뢰 소스에서 persona 재조립 (404가 503보다 앞서도록 requireClient 이전 해결)
+    const persona = await this.resolvePersona(request.personaId, request.browserId);
+    const prompt = buildPersonaPrompt(persona);
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
 
-    const systemInstruction = this.buildSystemInstruction(request);
+    const systemInstruction = this.buildSystemInstruction(
+      prompt.systemInstruction,
+      request.conversationSummary,
+    );
     const upstream = await client.models.generateContentStream({
       model,
-      contents: this.toContents(request),
+      contents: this.toContents([...prompt.fewShotMessages, ...request.messages]),
       config: {
-        ...(systemInstruction !== undefined ? { systemInstruction } : {}),
+        systemInstruction,
+        safetySettings: SAFETY_SETTINGS,
         ...(signal ? { abortSignal: signal } : {}),
       },
     });
@@ -117,17 +142,44 @@ export class ChatService {
     }
   }
 
-  /** #15 conversationSummary가 있으면 systemInstruction에 '이전 대화 요약' 블록을 접합 */
-  private buildSystemInstruction(request: ChatRequest): string | undefined {
-    const base = request.systemInstruction;
-    const summary = request.conversationSummary;
+  /**
+   * #23 personaId를 신뢰 소스에서 해결한다 — 클라가 보낸 어떤 instruction도 신뢰하지 않는다.
+   * `tpl-*`는 shared 템플릿, 그 외(`usr-*`)는 Character DB(소유자거나 공개면 반환, 아니면 404).
+   */
+  private async resolvePersona(personaId: string, browserId: string): Promise<Persona> {
+    if (personaId.startsWith('tpl-')) {
+      const template = PERSONA_TEMPLATES.find((p) => p.id === personaId);
+      if (!template) throw new NotFoundException('캐릭터를 찾을 수 없습니다.');
+      return template;
+    }
+    const character = await this.characters.getOne(personaId, browserId);
+    return this.toPersona(character);
+  }
+
+  /** Character row(Json 필드 포함) → Persona. prohibitions null → undefined */
+  private toPersona(c: Awaited<ReturnType<CharactersService['getOne']>>): Persona {
+    return {
+      id: c.id,
+      name: c.name,
+      tagline: c.tagline,
+      personality: c.personality,
+      speechStyle: c.speechStyle,
+      worldview: c.worldview,
+      greeting: c.greeting,
+      exampleDialogue: (c.exampleDialogue ?? []) as unknown as ExampleDialogueTurn[],
+      prohibitions: (c.prohibitions ?? undefined) as string[] | undefined,
+    };
+  }
+
+  /** #15 conversationSummary가 있으면 systemInstruction(서버 빌드 base)에 '이전 대화 요약' 블록을 접합 */
+  private buildSystemInstruction(base: string, summary?: string): string {
     if (!summary) return base;
     const block = [
       '## 이전 대화 요약',
       summary,
       '위 요약은 과거 대화의 압축이다. 일관성을 위해 참고하되 그대로 반복하지 마라.',
     ].join('\n');
-    return base ? `${base}\n\n${block}` : block;
+    return `${base}\n\n${block}`;
   }
 
   /**
@@ -197,8 +249,8 @@ export class ChatService {
     return this.client;
   }
 
-  private toContents(request: ChatRequest) {
-    return request.messages.map((m) => ({
+  private toContents(messages: ChatMessage[]) {
+    return messages.map((m) => ({
       role: m.role,
       parts: [{ text: m.content }],
     }));

@@ -6,5 +6,6 @@ import { CharactersService } from './characters.service';
 @Module({
   controllers: [CharactersController],
   providers: [CharactersService],
+  exports: [CharactersService], // #23 chat이 신뢰 persona 조회를 위해 재사용
 })
 export class CharactersModule {}

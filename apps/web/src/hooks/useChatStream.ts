@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   assembleHistory,
-  buildPersonaPrompt,
   parseChatStream,
   shouldSummarize,
   type ChatMessage,
@@ -12,6 +11,7 @@ import {
   type ChatStreamEvent,
   type Persona,
 } from '@ai-character/shared';
+import { getBrowserId } from '@/lib/browser-id';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -126,7 +126,6 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
       setStatus('streaming');
       setStreamingText('');
 
-      const prompt = buildPersonaPrompt(persona);
       let partial = '';
       let terminal: ChatStreamEvent | null = null;
 
@@ -135,12 +134,14 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
       const assembled = assembleHistory(history, summary);
 
       try {
+        // #23 클라는 personaId/browserId만 전송 — 서버가 신뢰 소스에서 프롬프트(systemInstruction/few-shot) 재조립
         const res = await fetch(`${API_URL}/chat/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            systemInstruction: prompt.systemInstruction,
-            messages: [...prompt.fewShotMessages, ...assembled],
+            personaId: persona.id,
+            browserId: getBrowserId(),
+            messages: assembled,
             ...(summary ? { conversationSummary: summary } : {}),
           } satisfies ChatRequest),
           signal: abort.signal,
