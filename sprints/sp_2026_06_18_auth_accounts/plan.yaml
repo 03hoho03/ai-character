@@ -1,0 +1,130 @@
+sprint_id: sp_2026_06_18_auth_accounts
+repo: 03hoho03/ai-character
+milestone: sp_2026_06_18_auth_accounts
+milestone_number: 4
+created_at: 2026-06-18
+created_by: sprint-pm
+length: open  # 무기한 — scope 완료 기준(사용자 결정)
+
+sprint_goal: |
+  익명 browserId 소유 모델을 탈피해 계정/인증 기반 소유 모델을 도입한다.
+  MVP-thin 경계(사용자 break): 로그인 + 신규 계정의 userId 소유까지 닫고,
+  기존 익명 데이터 클레임(보존)·유니크키 전환은 다음 sprint로 defer.
+
+# === 강제 게이트: out_of_scope ≥ 2 ===
+out_of_scope:
+  - "익명 데이터 클레임/머지(29c #33) + 유니크키 전환(29d #34) + 프론트 클레임 트리거(30c #37) — MVP-thin 경계 밖. browserId가 FK 없는 평문 + usr-<uuid> 클라제공 id 직행이라 클레임은 신규 매핑 로직, 유니크키 교체는 클레임과 순서의존(중복대화 마이그레이션 깨짐). 로그인 코어 검증 후 별도 cycle."
+  - "성인 등급별 safetySettings 차등 집행 + 성인 캐릭터 비소유자 채팅 접근 게이트 — 인증이 선결이지만 안전/정책 테마. 연령 인증·정책 결정 선행 필요. 인증 자리잡은 뒤 별도 안전 sprint."
+  - "비밀번호 재설정·이메일 인증메일·OAuth 다중 공급자 — 인증 MVP 이후. d1(#27)에서 단일 방식만 결정."
+  - "17c 인기 랭킹(#17 잔여) — Conversation.personaId FK 부재 선결. 발견 테마, 별도 cycle."
+  - "#20 멀티모달(대화→이미지) — 비용·모델·저장소 스파이크 선행. 그린필드 외부 의존."
+  - "#22 사용자 기억 직접 편집 — summary 단일 String 모델 불일치. 무관 테마."
+
+# === 이번 sprint 실행 ticket (6) ===
+# 실행 순서: 27 → 28 → 31(29a) → 32(29b) → 35(30a) → 36(30b)  (31/35, 32/36 일부 병렬 가능)
+included:
+  - issue: 27   # d1
+    title: "인증 전략 설계 spike — 익명 browserId→계정 전환 결정"
+    estimated_size: S
+    order: 1
+    pm_view:
+      urgency: high
+      value: "전체 체인의 단일 진입점이자 가장 싼 티켓(코드 0). 결정 없이 다른 티켓 열면 마이그레이션 2회·재배선 리스크."
+      dependency: []
+    arch_view:
+      blast_radius: "코드 변경 0(설계). 결정 영향 표면: main.ts CORS(credentials), app.module.ts 전역 ValidationPipe(whitelist), schema.prisma 평문 browserId, 클라제공 usr-id."
+      risk: "spike가 결정을 코드 제약과 대조 않고 추상으로 끝나면 #28~#30 재설계."
+      decomposition_needed: false
+    agree: "PM·Arch 합의 include."
+
+  - issue: 28   # d2
+    title: "User 모델 + 인증 백엔드 (회원가입/로그인/세션)"
+    estimated_size: M
+    order: 2
+    pm_view:
+      urgency: high
+      value: "MVP의 실질적 시작. User 모델·세션 발급이 없으면 소유 전환·프론트가 매달릴 곳 없음."
+      dependency: [27]
+    arch_view:
+      blast_radius: "신규 auth 모듈(controller/service/guard/dto) + Prisma User + 마이그레이션 1. main.ts/app.module.ts 전역 1~2줄(cookie-parser/CORS credentials). 인증 의존성(해시/세션 또는 jwt) 그린필드 추가. 기존 8 소유검증 미변경."
+      risk: "비번 해시(bcrypt/argon2)·세션 비밀키 오설정 시 보안 baseline 약화 — 쿠키 httpOnly/secure/sameSite·해시라운드 등 구조화 상수는 내용 단언 필요(lesson l_2026_06_18_x)."
+      decomposition_needed: false
+    agree: "PM·Arch 합의 include."
+
+  - issue: 31   # 29a
+    parent: 29
+    title: "소유 스키마 — Character/Conversation nullable userId + User FK + 마이그레이션(컬럼 추가만)"
+    estimated_size: S
+    order: 3
+    arch_view:
+      blast_radius: "schema.prisma Character.userId/Conversation.userId nullable + User relation. 데이터 무변경, 기존 unique 병행."
+      risk: "낮음 — 컬럼 추가만, 기존 browserId 흐름 회귀 없음."
+
+  - issue: 32   # 29b
+    parent: 29
+    title: "소유검증 세션 전환 — 8메서드/컨트롤러/DTO userId 기준(browserId 폴백 병행)"
+    estimated_size: M
+    order: 4
+    arch_view:
+      blast_radius: "characters.service 3 + conversations.service 3 + chat.service 소유확인, 컨트롤러 시그니처/DTO(BrowserIdQueryDto/body.browserId), 전역 whitelist 정합."
+      risk: "소유검증 핵심 경로 — 비소유 404 회귀 위험. HTTP 계약 테스트 필수(lesson l_2026_06_14_y)."
+      dependency: [28, 31]
+
+  - issue: 35   # 30a
+    parent: 30
+    title: "인증 UI + 세션 상태 — 로그인/회원가입 화면 + 비로그인 폴백"
+    estimated_size: M
+    order: 5
+    arch_view:
+      blast_radius: "신규 인증 화면(현재 0개) + 세션 컨텍스트. 비로그인 폴백(browserId 경로 유지)."
+      risk: "낮음 — 신규 표면 중심."
+      dependency: [28]
+
+  - issue: 36   # 30b
+    parent: 30
+    title: "api 래퍼·6 호출부 세션 식별자 전환 (credentials/토큰 주입, browserId 폴백)"
+    estimated_size: M
+    order: 6
+    arch_view:
+      blast_radius: "characters-api/conversations-api fetch 래퍼 + getBrowserId 호출부(useChatStream/use-chat-persistence/character-store)."
+      risk: "세션 메커니즘(#27)이 안 정해지면 6 래퍼 재작성 rework — #27 선결 강제."
+      dependency: [28, 31]
+
+# === deferred (issue 유지, Milestone 미할당) ===
+deferred:
+  - issue: 33   # 29c
+    parent: 29
+    title: "익명 데이터 클레임 — 로그인 시 browserId row를 userId로 재소유"
+    reason: "MVP-thin 경계 밖. browserId 평문·매핑 테이블 부재로 신규 트랜잭션 로직. #27 클레임 정책 확정 후."
+    revisit_after: "#32, #27 클레임 정책"
+  - issue: 34   # 29d
+    parent: 29
+    title: "유니크키 전환 (browserId,personaId)→(userId,personaId)"
+    reason: "클레임(29c)과 순서의존 — 중복대화로 마이그레이션 깨질 위험. 클레임 정합화 후."
+    revisit_after: "#33"
+  - issue: 37   # 30c
+    parent: 30
+    title: "익명→계정 클레임 트리거(migrateLegacyOnce 패턴 확장)"
+    reason: "서버 클레임(29c)에 강결합. UI/세션 코어와 분리."
+    revisit_after: "#33, #35"
+
+# === 분해된 parent epic (추적용 open) ===
+decomposed_parents:
+  - issue: 29
+    label: "sprint-pm:needs-decomp"
+    children_included: [31, 32]
+    children_deferred: [33, 34]
+  - issue: 30
+    label: "sprint-pm:needs-decomp"
+    children_included: [35, 36]
+    children_deferred: [37]
+
+cut: []  # cut 없음 — 전량 defer로 추적 유지
+
+# === acceptance gate ===
+gates:
+  normalization_accuracy: "draft 4종(#27~#30) 100% confirm + 사용자 break 2건 100% 반영"   # ✓ ≥80%
+  out_of_scope_count: 6          # ≥2 ✓
+  deferred_ratio: "3/9 실행 work-unit = 33%"  # cut+deferred ≥30% ✓ (included 6: 27/28/31/32/35/36, deferred 3: 33/34/37)
+  pm_arch_conflicts: 2           # #29 분해 입도(2 vs 4) + #30 defer vs decompose  ≥1 ✓
+  user_attestation: attested  # 2026-06-18 사용자 승인(MVP-thin + Architect 세밀 분해)
