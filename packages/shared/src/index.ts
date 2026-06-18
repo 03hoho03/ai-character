@@ -105,6 +105,8 @@ export interface PersistedMessage {
 export interface ConversationRecord {
   id: string;
   browserId: string;
+  /** #31 계정 소유(nullable, browserId 병행). 소유검증/유니크키 전환은 #32/#34 */
+  userId?: string | null;
   personaId: string;
   createdAt: string;
   updatedAt: string;
@@ -143,6 +145,8 @@ export interface CreateConversationRequest {
 export interface CharacterRecord extends Persona {
   /** 소유자 = 익명 browserId */
   browserId: string;
+  /** #31 계정 소유(nullable, browserId 병행). 소유검증 전환은 #32 — 선납으로 파급 완화 */
+  userId?: string | null;
   /** 공개 목록/탐색 노출 여부 (#16: 목록+상세 조회까지, 타 사용자 채팅은 #19) */
   isPublic: boolean;
   createdAt: string;

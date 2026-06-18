@@ -15,6 +15,10 @@ model User {
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
+
+  // #31 소유 역방향 relation. 실제 소유검증 userId 전환은 #32(이 티켓은 스키마 토대만).
+  characters    Character[]
+  conversations Conversation[]
 }
 
 model Conversation {
@@ -29,7 +33,12 @@ model Conversation {
   summary         String?
   summarizedCount Int     @default(0)
 
+  // #31 계정 소유(nullable, browserId 병행). 소유검증 전환·유니크키 전환은 #32/#34.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   @@unique([browserId, personaId])
+  @@index([userId]) // #31 계정 소유 조회 대비
 }
 
 model Message {
@@ -62,10 +71,14 @@ model Character {
   tags            String[] @default([])
   // #26 콘텐츠 등급 — 'all'(일반) | 'adult'(성인). 공개목록 기본은 일반만 노출, 성인은 opt-in.
   contentRating   String   @default("all")
+  // #31 계정 소유(nullable, browserId 병행). 소유검증 전환은 #32.
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([browserId]) // 내 캐릭터 목록
+  @@index([userId]) // #31 계정 소유 캐릭터 목록 대비
   @@index([isPublic, updatedAt]) // 공개 캐릭터 목록(최신순)
   @@index([isPublic, category]) // #25 공개+카테고리 필터
   @@index([isPublic, contentRating]) // #26 공개+등급 필터
