@@ -1,0 +1,59 @@
+lesson_id: l_2026_06_18_x_config_presence_only_assertion
+category: verifier_weakness
+title: "보안/설정 상수 테스트가 존재(Array.isArray+length)만 단언 — 내용(카테고리/threshold) 회귀를 못 잡음"
+created_at: "2026-06-18"
+updated_at: "2026-06-18"
+
+sources:
+  - run_id: dev-cycle/2026_06_18_server-side-safety-enforcement (비정식 — verify_report 기반 회고)
+    file_ref: "dev-cycle/2026_06_18_server-side-safety-enforcement/verify_report.md#notes"
+    quote: |
+      safetySettings 테스트는 Array.isArray + length > 0만 단언하고 카테고리/threshold 값
+      자체는 검증하지 않음. baseline 강도가 약화돼도 GREEN으로 통과할 수 있는 약한 체크
+      (허위 GREEN 위험은 낮으나 회귀 감지력 부족).
+    observed_at: "2026-06-18"
+
+n_cycles: 1
+
+pattern:
+  trigger: "보안/정책 성격의 구조화 상수(safetySettings, 권한 매트릭스, 등급 플래그 등)를 테스트할 때, 그 값이 '전달됐는지'만 확인"
+  symptom: "테스트가 `Array.isArray(x) && x.length > 0` 수준으로만 단언 — 카테고리 누락·threshold 약화·잘못된 enum 값이 들어가도 통과. 이번엔 독립 verifier가 in-cycle에 적발해 카테고리 4종 + threshold 존재 단언으로 강화함(자가 교정 성공)"
+  failure_mode: "안전 가드의 내용 회귀(예: SEXUALLY_EXPLICIT을 BLOCK_NONE으로 바꿔도, 카테고리 하나를 빠뜨려도)가 테스트 그물 밖으로 샘 — 보안 설정의 사일런트 약화"
+
+seed_taxonomy_match: weak_check
+
+confidence: tentative
+confidence_reason: |
+  n=1 (#23 safetySettings 단발). 동일 verifier가 같은 세션에서 적발·강화해 실제 누출은 없었음.
+  config-content 단언 약점이 다른 ticket(#26 등급 플래그 등)에서 한 번 더 반복되면 weak 승급.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    보안/정책 성격의 구조화 상수를 테스트할 때 '존재' 단언에 그치지 말고 *내용*을 단언:
+    필수 키/카테고리가 모두 있는지(arrayContaining), 핵심 값(threshold/등급)이 의도한
+    값인지. "강화돼야 할 baseline이 약화돼도 GREEN"이면 회귀 감지력 0인 weak_check.
+
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 dev-cycle Phase 2: 보안/정책 상수(#26 contentRating 등) 테스트는 키 집합 + 핵심 값까지 단언"
+  - "다음 dev-cycle Phase 4 verify: 'baseline이 약화돼도 GREEN인가' 자문 — 그렇다면 weak_check로 반려"
+
+remaining_ambiguity:
+  - "어디까지가 과한 단언(상수 전체 스냅샷)인지 — 핵심 키/값만 vs 전량. 과단언은 깨지기 쉬운 테스트로 역전될 수 있음"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    verify와 같은 세션. verifier가 스스로 약점을 적고 learn이 같은 세션에서 패턴화 —
+    독립 세션 재검 시 신뢰 상승. 단 약점→강화가 in-cycle에 닫힌 점은 긍정 신호.

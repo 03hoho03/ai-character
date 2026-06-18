@@ -45,9 +45,9 @@ proposed_patch:
     특히 같은 컨트롤러에 리터럴 경로와 `:param` 경로가 공존하면 라우트 순서 회귀 테스트 필수.
     별도 강한 후보: <project>/CLAUDE.md 의 테스트 규약에 동일 항목 1줄 추가(승인 대기).
 
-  applied: false
-  applied_at: ""
-  applied_by: ""
+  applied: true
+  applied_at: "2026-06-18"
+  applied_by: "사용자 승인 (learn 사이클 #23) — <project>/CLAUDE.md 테스트 규약에 반영"
 
 applies_to_next_goal:
   - "다음 dev-cycle Phase 1: 신규 엔드포인트면 성공 기준에 HTTP 계약 테스트 항목 강제"

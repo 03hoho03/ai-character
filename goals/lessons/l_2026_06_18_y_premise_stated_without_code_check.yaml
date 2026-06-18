@@ -1,0 +1,62 @@
+lesson_id: l_2026_06_18_y_premise_stated_without_code_check
+category: define_weakness
+title: "티켓/PRD가 기술적 전제를 코드 미확인 채 사실로 단정 — Architect 코드 확인이 정정(설계 방향 전환)"
+created_at: "2026-06-18"
+updated_at: "2026-06-18"
+
+sources:
+  - run_id: sprint sp_2026_06_18_discover_safety / dev-cycle 2026_06_18_server-side-safety-enforcement
+    file_ref: "sprints/sp_2026_06_18_discover_safety/conflicts.md#architect의-사실-정정"
+    quote: |
+      #19 전제 "prohibitions 미집행"은 부정확. prohibitions는 이미 클라이언트에서
+      프롬프트에 주입(persona-prompt.ts)되고 있고, 진짜 갭은 서버가 클라 조립 instruction을
+      무검증 신뢰(chat.service.ts)하는 구조 — 클라가 어떤 금지/등급도 우회 가능.
+      → #19의 본질을 "서버측 집행"으로 재정의.
+    observed_at: "2026-06-18"
+
+n_cycles: 1
+
+pattern:
+  trigger: "이슈 body/PRD 배경이 '현재 X가 안 된다/없다'는 기술적 전제를 코드 확인 없이 사실로 단정하고, 그 전제 위에 요구사항을 세움"
+  symptom: "독립 Architect agent가 코드를 읽고 전제를 정정('미집행'이 아니라 '클라 신뢰 구조'). 정정으로 ticket 본질·구현 방향이 바뀜 — 전제대로 갔으면 엉뚱한 곳을 고칠 뻔함"
+  failure_mode: "틀린 전제 위에 성공 기준을 세우면 '맞는 것을 구현했는데 문제는 그대로'가 될 위험. 이번엔 sprint-pm의 독립 코드 확인 agent가 구현 전에 차단(사전 적발 성공)"
+
+seed_taxonomy_match: ""   # 후보 제안: unverified_premise (기존 weak_check와 인접하나 '명령 실존'이 아닌 '전제 사실성')
+
+confidence: tentative
+confidence_reason: |
+  n=1 (#19 전제 단발). 형제 lesson [[l_2026_06_14_y_unverified_command_in_criteria]](명령 실존 미확인)와
+  같은 축 '코드 대조 없이 단정' — 둘을 묶으면 weak에 가까우나, symptom 형태가 달라(명령 vs 설계 전제)
+  보수적으로 별 lesson + tentative 유지. 한 번 더 반복되면 두 lesson을 'unverified_assumption' 상위로 병합 검토.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    sprint-pm Phase 1 정규화 / dev-cycle PRD Phase에서 이슈 body의 '현재 X가 안 된다/없다'류
+    기술적 전제는 grep/Read로 코드 대조 후 채택. 전제가 틀리면 요구사항·성공 기준을 재정의.
+    (독립 Architect 코드 확인이 이번에 작동 — 그 단계를 정규화·PRD에도 명시적 게이트로.)
+
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 sprint-pm Phase 1: 이슈 배경의 사실 전제를 코드로 1회 대조 후 draft 확정"
+  - "다음 dev-cycle Phase 1: PRD '배경'의 '현재 상태' 단정은 코드 인용으로 뒷받침"
+
+remaining_ambiguity:
+  - "전제 검증을 어느 깊이까지 — 모든 배경 문장 vs 요구사항을 좌우하는 핵심 전제만"
+  - "[[l_2026_06_14_y_unverified_command_in_criteria]]와 병합 여부는 3번째 관측 후 결정"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    전제 정정은 verify가 아니라 sprint-pm Architect agent(구현 전 단계)가 했다 — verify 세션
+    오염과 무관한 독립 출처라 신뢰는 상대적으로 높음. 단 n=1.
