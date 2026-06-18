@@ -6,11 +6,13 @@ import type { ChatMessage, Persona } from '@ai-character/shared';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useChatPersistence } from '@/lib/use-chat-persistence';
 
-/** #3 채팅 화면 — 메시지 목록 / 스트리밍 렌더 / 입력 / 에러 배너 */
+/** #3 채팅 화면 — 메시지 목록 / 스트리밍 렌더 / 입력 / 에러 배너 (#18 재생성·편집) */
 export function ChatScreen({ persona }: { persona: Persona }) {
   const persistence = useChatPersistence(persona.id); // #14 복원/저장 연동
-  const { messages, streamingText, status, error, send, retry } = useChatStream(persona, persistence);
+  const { messages, streamingText, status, error, send, retry, regenerate, editUser } =
+    useChatStream(persona, persistence);
   const [input, setInput] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 새 메시지/스트리밍 갱신 시 하단 자동 스크롤
@@ -25,6 +27,9 @@ export function ChatScreen({ persona }: { persona: Persona }) {
     setInput('');
   };
 
+  const idle = status !== 'streaming';
+  const lastIndex = messages.length - 1;
+
   return (
     <main className="mx-auto flex h-dvh max-w-2xl flex-col font-sans">
       <header className="flex items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -37,7 +42,23 @@ export function ChatScreen({ persona }: { persona: Persona }) {
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
         {messages.map((message, i) => (
-          <MessageBubble key={i} message={message} persona={persona} />
+          <MessageBubble
+            key={i}
+            message={message}
+            persona={persona}
+            // #18 user 메시지 편집 — 스트리밍 중엔 비활성
+            editable={message.role === 'user' && idle}
+            editing={editingIndex === i}
+            onStartEdit={() => setEditingIndex(i)}
+            onCancelEdit={() => setEditingIndex(null)}
+            onSaveEdit={(content) => {
+              setEditingIndex(null);
+              editUser(i, content);
+            }}
+            // #18 재생성 — 마지막 model 답변(greeting 외)에만
+            regeneratable={message.role === 'model' && i === lastIndex && i > 0 && idle}
+            onRegenerate={regenerate}
+          />
         ))}
 
         {streamingText !== null && (
@@ -94,23 +115,49 @@ function MessageBubble({
   message,
   persona,
   streaming = false,
+  editable = false,
+  editing = false,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  regeneratable = false,
+  onRegenerate,
 }: {
   message: ChatMessage;
   persona: Persona;
   streaming?: boolean;
+  editable?: boolean;
+  editing?: boolean;
+  onStartEdit?: () => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: (content: string) => void;
+  regeneratable?: boolean;
+  onRegenerate?: () => void;
 }) {
   if (message.role === 'user') {
+    if (editing) {
+      return <UserMessageEditor initial={message.content} onSave={onSaveEdit} onCancel={onCancelEdit} />;
+    }
     return (
-      <div className="flex justify-end">
+      <div className="group flex flex-col items-end gap-1">
         <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
           {message.content}
         </div>
+        {editable && (
+          <button
+            type="button"
+            onClick={onStartEdit}
+            className="text-xs text-zinc-400 opacity-0 transition-opacity hover:text-zinc-600 group-hover:opacity-100"
+          >
+            편집
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="group flex items-start gap-2">
       <Avatar name={persona.name} />
       <div className="max-w-[75%]">
         <p className="mb-1 text-xs text-zinc-500">{persona.name}</p>
@@ -118,6 +165,52 @@ function MessageBubble({
           {message.content}
           {streaming && <span className="ml-1 inline-block animate-pulse">▍</span>}
         </div>
+        {regeneratable && (
+          <button
+            type="button"
+            onClick={onRegenerate}
+            className="mt-1 text-xs text-zinc-400 opacity-0 transition-opacity hover:text-zinc-600 group-hover:opacity-100"
+          >
+            재생성
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** #18 user 메시지 인라인 편집기 — 저장 시 해당 지점부터 재실행 */
+function UserMessageEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave?: (content: string) => void;
+  onCancel?: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        aria-label="메시지 편집"
+        className="min-h-16 w-full max-w-[75%] rounded-2xl border border-zinc-300 bg-transparent px-4 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700"
+        autoFocus
+      />
+      <div className="flex gap-2 text-xs">
+        <button type="button" onClick={onCancel} className="px-3 py-1 text-zinc-500 hover:text-zinc-700">
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave?.(text)}
+          disabled={text.trim() === ''}
+          className="rounded-md bg-zinc-900 px-3 py-1 font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          저장 후 재전송
+        </button>
       </div>
     </div>
   );

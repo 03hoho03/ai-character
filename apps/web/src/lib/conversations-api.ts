@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   ConversationRecord,
   ConversationWithMessages,
+  SummaryResult,
 } from '@ai-character/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -54,4 +55,39 @@ export async function appendMessage(
     body: JSON.stringify({ browserId, role, content }),
   });
   if (!res.ok) throw new Error(`appendMessage failed: ${res.status}`);
+}
+
+/**
+ * #15 임계 초과 시 과거 turn 자동 요약 트리거. best-effort —
+ * 실패하면 요약 없이(null) 진행해 채팅을 막지 않는다.
+ */
+export async function summarizeConversation(
+  conversationId: string,
+  browserId: string,
+): Promise<SummaryResult> {
+  try {
+    const res = await fetch(`${API_URL}/conversations/${conversationId}/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browserId }),
+    });
+    if (!res.ok) return { summary: null, summarizedCount: 0 };
+    return (await res.json()) as SummaryResult;
+  } catch {
+    return { summary: null, summarizedCount: 0 };
+  }
+}
+
+/** #18 메시지 열 전체 교체 — 편집/재생성 시 후속 turn truncate */
+export async function replaceMessages(
+  conversationId: string,
+  browserId: string,
+  messages: ChatMessage[],
+): Promise<void> {
+  const res = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ browserId, messages }),
+  });
+  if (!res.ok) throw new Error(`replaceMessages failed: ${res.status}`);
 }

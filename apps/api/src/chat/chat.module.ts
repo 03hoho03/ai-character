@@ -19,5 +19,6 @@ import { ChatService } from './chat.service';
       inject: [ConfigService],
     },
   ],
+  exports: [ChatService], // #15 conversations가 요약 생성을 위해 재사용
 })
 export class ChatModule {}

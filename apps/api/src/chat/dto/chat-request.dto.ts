@@ -29,4 +29,9 @@ export class ChatRequestDto implements ChatRequest {
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
   messages!: ChatMessageDto[];
+
+  /** #15 과거 대화 요약 — 서버가 systemInstruction에 접합 */
+  @IsOptional()
+  @IsString()
+  conversationSummary?: string;
 }

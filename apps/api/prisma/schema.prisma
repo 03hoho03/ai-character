@@ -17,6 +17,10 @@ model Conversation {
   updatedAt DateTime  @updatedAt
   messages  Message[]
 
+  // #15 장기기억 — 과거 turn 자동 요약과 그 요약에 접힌 선행 turn 수.
+  summary         String?
+  summarizedCount Int     @default(0)
+
   @@unique([browserId, personaId])
 }
 

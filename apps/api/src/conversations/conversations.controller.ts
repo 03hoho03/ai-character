@@ -1,9 +1,20 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import {
   AppendMessageDto,
   CreateConversationDto,
   GetConversationQueryDto,
+  ReplaceMessagesDto,
+  SummarizeDto,
 } from './dto/conversation.dto';
 
 /**
@@ -32,5 +43,17 @@ export class ConversationsController {
   @Post(':id/messages')
   append(@Param('id') id: string, @Body() body: AppendMessageDto) {
     return this.conversations.appendMessage(id, body.browserId, body.role, body.content);
+  }
+
+  /** #18 메시지 열 전체 교체 — 편집/재생성 후속 turn truncate (소유권 불일치 시 404) */
+  @Put(':id/messages')
+  replace(@Param('id') id: string, @Body() body: ReplaceMessagesDto) {
+    return this.conversations.replaceMessages(id, body.browserId, body.messages);
+  }
+
+  /** #15 임계 초과 시 과거 turn 자동 요약 (소유권 불일치 시 404) */
+  @Post(':id/summarize')
+  summarize(@Param('id') id: string, @Body() body: SummarizeDto) {
+    return this.conversations.summarizeIfNeeded(id, body.browserId);
   }
 }

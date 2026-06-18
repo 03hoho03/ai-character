@@ -37,6 +37,14 @@ export interface Persona {
 export { PERSONA_TEMPLATES } from './personas';
 export { buildPersonaPrompt, type PersonaPrompt } from './persona-prompt';
 export {
+  SUMMARY_TURN_THRESHOLD,
+  SUMMARY_RECENT_TURNS,
+  SUMMARY_TOKEN_CAP,
+  estimateTokens,
+  shouldSummarize,
+  assembleHistory,
+} from './conversation-summary';
+export {
   parseChatStream,
   serializeChatStreamEvent,
   type ChatStreamErrorCode,
@@ -55,6 +63,8 @@ export interface ChatRequest {
   /** 페르소나 system instruction. 조립 로직은 #5 — 여기서는 문자열만 운반 */
   systemInstruction?: string;
   messages: ChatMessage[];
+  /** #15 과거 대화 요약 — 서버가 systemInstruction에 접합해 장기기억으로 주입 */
+  conversationSummary?: string;
 }
 
 export interface ChatResponse {
@@ -78,10 +88,25 @@ export interface ConversationRecord {
   personaId: string;
   createdAt: string;
   updatedAt: string;
+  /** #15 과거 turn 자동 요약(장기기억). 없으면 null */
+  summary?: string | null;
+  /** #15 summary에 접힌 선행 turn 수 — 증분 요약 기준점 */
+  summarizedCount?: number;
 }
 
 export interface ConversationWithMessages extends ConversationRecord {
   messages: PersistedMessage[];
+}
+
+/** POST /conversations/:id/summarize 요청 (#15) */
+export interface SummarizeRequest {
+  browserId: string;
+}
+
+/** 요약 결과 — summarizeConversation 응답/영속 단위 */
+export interface SummaryResult {
+  summary: string | null;
+  summarizedCount: number;
 }
 
 /** POST /conversations 요청 — (browserId, personaId) get-or-create */
@@ -121,4 +146,13 @@ export interface AppendMessageRequest {
   browserId: string;
   role: ChatMessage['role'];
   content: string;
+}
+
+/**
+ * PUT /conversations/:id/messages 요청 (#18) — 메시지 열 전체 교체.
+ * 편집/재생성 시 후속 turn truncate를 '전체 교체'로 달성한다(append-only 한계 해소).
+ */
+export interface ReplaceMessagesRequest {
+  browserId: string;
+  messages: ChatMessage[];
 }

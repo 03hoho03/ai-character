@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  assembleHistory,
   buildPersonaPrompt,
   parseChatStream,
+  shouldSummarize,
   type ChatMessage,
   type ChatRequest,
   type ChatStreamErrorCode,
@@ -31,6 +33,12 @@ export interface ChatPersistence {
   onUserMessage: (content: string) => void;
   /** model 응답이 done(성공)으로 확정될 때 */
   onModelMessage: (content: string) => void;
+  /** #18 편집/재생성 — 메시지 열(greeting 제외) 전체 교체로 후속 turn truncate */
+  replace?: (messages: ChatMessage[]) => Promise<void>;
+  /** #15 마운트 시 저장된 과거 대화 요약 적재(없으면 null) */
+  loadSummary?: () => Promise<string | null>;
+  /** #15 임계 초과 시 서버 요약 트리거 — 갱신된 요약 반환(실패 시 null) */
+  summarize?: () => Promise<string | null>;
 }
 
 /** best-effort — 영속화 콜백 예외를 흡수해 채팅 흐름을 보호 */
@@ -60,6 +68,8 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
   const busyRef = useRef(false);
   const messagesRef = useRef(messages);
   const abortRef = useRef<AbortController | null>(null);
+  // #15 현재 대화 요약(장기기억) — 요청 조립에 주입. 마운트 적재 + 임계 초과 시 갱신.
+  const summaryRef = useRef<string | null>(null);
 
   const updateMessages = useCallback((next: ChatMessage[]) => {
     messagesRef.current = next;
@@ -67,6 +77,23 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
   }, []);
 
   useEffect(() => () => abortRef.current?.abort(), []); // unmount 시 진행 중 스트림 정리
+
+  // #15 마운트 시 저장된 요약 적재 — 이후 요청 조립에 장기기억으로 주입
+  useEffect(() => {
+    if (!persistence?.loadSummary) return;
+    let cancelled = false;
+    persistence
+      .loadSummary()
+      .then((summary) => {
+        if (!cancelled) summaryRef.current = summary;
+      })
+      .catch(() => {
+        /* best-effort — 요약 적재 실패는 무시 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [persistence]);
 
   // #14 마운트 복원 — 저장 turn을 greeting 뒤에 붙인다. 전송 시작 후/언마운트면 무시.
   useEffect(() => {
@@ -103,13 +130,18 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
       let partial = '';
       let terminal: ChatStreamEvent | null = null;
 
+      // #15 full-history 대신 '요약 + 최근 N turn' 조립(토큰 상한 가드). 요약 없으면 full 보존.
+      const summary = summaryRef.current;
+      const assembled = assembleHistory(history, summary);
+
       try {
         const res = await fetch(`${API_URL}/chat/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: prompt.systemInstruction,
-            messages: [...prompt.fewShotMessages, ...history],
+            messages: [...prompt.fewShotMessages, ...assembled],
+            ...(summary ? { conversationSummary: summary } : {}),
           } satisfies ChatRequest),
           signal: abort.signal,
         });
@@ -136,6 +168,17 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
         const done = terminal;
         updateMessages([...history, done.message]);
         if (persistence) safe(() => persistence.onModelMessage(done.message.content));
+        // #15 저장 turn(greeting 제외)이 임계를 넘으면 과거 turn 요약을 트리거
+        if (persistence?.summarize && shouldSummarize(messagesRef.current.length - 1)) {
+          persistence
+            .summarize()
+            .then((summary) => {
+              if (summary !== null) summaryRef.current = summary;
+            })
+            .catch(() => {
+              /* best-effort — 요약 트리거 실패는 채팅을 막지 않는다 */
+            });
+        }
         setStatus('idle');
         return;
       }
@@ -171,5 +214,47 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
     void run(history.slice(0, lastUserIdx + 1));
   }, [run]);
 
-  return { messages, streamingText, status, error, send, retry };
+  /**
+   * #18 편집/재생성 공통 — 주어진 history로 재실행하기 전에 영속을 먼저 교체(truncate)한다.
+   * greeting(index 0)은 영속 대상이 아니므로 slice(1)만 보낸다. run의 done이 새 model을 append.
+   */
+  const rerun = useCallback(
+    async (history: ChatMessage[]) => {
+      if (persistence?.replace) {
+        try {
+          await persistence.replace(history.slice(1));
+        } catch {
+          /* best-effort — 교체 실패해도 재실행은 진행 */
+        }
+      }
+      await run(history);
+    },
+    [persistence, run],
+  );
+
+  /** #18 마지막 model 답변 재생성 — 직전 user turn 기준으로 재요청, 옛 답변 대체 */
+  const regenerate = useCallback(() => {
+    if (busyRef.current) return;
+    const history = messagesRef.current;
+    const lastUserIdx = history.findLastIndex((m) => m.role === 'user');
+    if (lastUserIdx === -1) return; // user turn 없음 — no-op
+    void rerun(history.slice(0, lastUserIdx + 1));
+  }, [rerun]);
+
+  /** #18 임의의 user 메시지 편집 — 해당 지점 이후를 truncate하고 편집 내용으로 재실행 */
+  const editUser = useCallback(
+    (index: number, content: string) => {
+      if (busyRef.current) return;
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const history = messagesRef.current;
+      // index 0은 greeting(model). user 메시지만 편집 가능.
+      if (index <= 0 || index >= history.length || history[index].role !== 'user') return;
+      const next = [...history.slice(0, index), { role: 'user' as const, content: trimmed }];
+      void rerun(next);
+    },
+    [rerun],
+  );
+
+  return { messages, streamingText, status, error, send, retry, regenerate, editUser };
 }

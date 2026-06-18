@@ -6,6 +6,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PERSONA_TEMPLATES,
+  SUMMARY_RECENT_TURNS,
+  SUMMARY_TURN_THRESHOLD,
   buildPersonaPrompt,
   serializeChatStreamEvent,
   type ChatStreamEvent,
@@ -250,6 +252,219 @@ describe('useChatStream (#3)', () => {
         { role: 'user', content: '안녕' },
         { role: 'model', content: '괜찮아요' },
       ]);
+    });
+  });
+
+  // ── #18 재생성 + 사용자 메시지 편집 ──────────────────────────
+  describe('재생성/편집 (#18)', () => {
+    const makePersistence = () => ({
+      restore: vi.fn().mockResolvedValue([]),
+      onUserMessage: vi.fn(),
+      onModelMessage: vi.fn(),
+      replace: vi.fn().mockResolvedValue(undefined),
+    });
+
+    /** send '안녕' → done '답변1' 까지 진행해 [greeting, user, model] 상태를 만든다 */
+    async function primeOneTurn(
+      result: { current: ReturnType<typeof useChatStream> },
+      sse: ReturnType<typeof sseResponse>,
+    ) {
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      act(() => {
+        sse.push({ type: 'done', message: { role: 'model', content: '답변1' } });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+    }
+
+    it('regenerate()는 마지막 user turn 기준으로 재실행하고 직전 답변을 대체한다', async () => {
+      const persistence = makePersistence();
+      const first = sseResponse();
+      const second = sseResponse();
+      fetchMock.mockResolvedValueOnce(first.response).mockResolvedValueOnce(second.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+
+      await primeOneTurn(result, first);
+
+      act(() => result.current.regenerate());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      // 영속: greeting 제외, 직전 user turn까지로 전체 교체(옛 답변 truncate)
+      expect(persistence.replace).toHaveBeenCalledWith([{ role: 'user', content: '안녕' }]);
+      // 재요청 히스토리는 마지막 user까지
+      const body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      const prompt = buildPersonaPrompt(persona);
+      expect(body.messages).toEqual([...prompt.fewShotMessages, greeting, { role: 'user', content: '안녕' }]);
+
+      act(() => {
+        second.push({ type: 'done', message: { role: 'model', content: '답변2' } });
+        second.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+      expect(result.current.messages).toEqual([
+        greeting,
+        { role: 'user', content: '안녕' },
+        { role: 'model', content: '답변2' },
+      ]);
+    });
+
+    it('user turn이 없으면 regenerate()는 no-op (greeting만 있을 때)', () => {
+      const { result } = renderHook(() => useChatStream(persona));
+      act(() => result.current.regenerate());
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('editUser()는 편집 index 이후를 truncate하고 편집된 메시지로 재실행한다', async () => {
+      const persistence = makePersistence();
+      const first = sseResponse();
+      const second = sseResponse();
+      fetchMock.mockResolvedValueOnce(first.response).mockResolvedValueOnce(second.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+
+      await primeOneTurn(result, first); // [greeting, user '안녕'(1), model '답변1'(2)]
+
+      act(() => result.current.editUser(1, '안녕 고침'));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      // 영속: 편집된 user까지로 전체 교체(후속 model turn truncate)
+      expect(persistence.replace).toHaveBeenCalledWith([{ role: 'user', content: '안녕 고침' }]);
+      const body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      const prompt = buildPersonaPrompt(persona);
+      expect(body.messages).toEqual([
+        ...prompt.fewShotMessages,
+        greeting,
+        { role: 'user', content: '안녕 고침' },
+      ]);
+
+      act(() => {
+        second.push({ type: 'done', message: { role: 'model', content: '고친 답변' } });
+        second.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+      expect(result.current.messages).toEqual([
+        greeting,
+        { role: 'user', content: '안녕 고침' },
+        { role: 'model', content: '고친 답변' },
+      ]);
+    });
+
+    it('빈 내용으로 editUser()는 no-op, 모델 메시지 index 편집도 무시', async () => {
+      const persistence = makePersistence();
+      const first = sseResponse();
+      fetchMock.mockResolvedValueOnce(first.response);
+      const { result } = renderHook(() => useChatStream(persona, persistence));
+      await waitFor(() => expect(persistence.restore).toHaveBeenCalled());
+      await primeOneTurn(result, first);
+
+      act(() => result.current.editUser(1, '   ')); // 공백
+      act(() => result.current.editUser(2, '모델 자리')); // model index
+      act(() => result.current.editUser(0, 'greeting 편집')); // greeting(model)
+
+      expect(fetchMock).toHaveBeenCalledTimes(1); // primeOneTurn의 1회 외 추가 없음
+      expect(persistence.replace).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── #15 대화 요약 조립/트리거 ──────────────────────────────
+  describe('요약 조립/트리거 (#15)', () => {
+    const persona2 = PERSONA_TEMPLATES[0];
+    const makePersistence = (
+      turns: { role: 'user' | 'model'; content: string }[],
+      summary: string | null,
+    ) => ({
+      restore: vi.fn().mockResolvedValue(turns),
+      onUserMessage: vi.fn(),
+      onModelMessage: vi.fn(),
+      loadSummary: vi.fn().mockResolvedValue(summary),
+      summarize: vi.fn().mockResolvedValue('갱신된 요약'),
+    });
+
+    it('summary가 있으면 요청을 최근 N turn + conversationSummary로 조립한다', async () => {
+      // 충분히 많은 과거 turn + 요약 적재
+      const past = Array.from({ length: 8 }, (_, i) => ({
+        role: (i % 2 === 0 ? 'user' : 'model') as 'user' | 'model',
+        content: `과거${i}`,
+      }));
+      const persistence = makePersistence(past, '이전 요약본');
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona2, persistence));
+      await waitFor(() => expect(persistence.loadSummary).toHaveBeenCalled());
+      await waitFor(() => expect(result.current.messages.length).toBeGreaterThan(1));
+
+      act(() => result.current.send('새 질문'));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      const prompt = buildPersonaPrompt(persona2);
+      // conversationSummary 전송 + 최근 N turn만 (full-history 아님)
+      expect(body.conversationSummary).toBe('이전 요약본');
+      expect(body.messages.length).toBe(prompt.fewShotMessages.length + SUMMARY_RECENT_TURNS);
+      expect(body.messages.slice(-1)[0]).toEqual({ role: 'user', content: '새 질문' });
+    });
+
+    it('summary가 없으면 기존 full-history로 전송한다 (conversationSummary 미포함)', async () => {
+      const persistence = makePersistence([], null);
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona2, persistence));
+      await waitFor(() => expect(persistence.loadSummary).toHaveBeenCalled());
+
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      const prompt = buildPersonaPrompt(persona2);
+      expect(body.conversationSummary).toBeUndefined();
+      expect(body.messages).toEqual([
+        ...prompt.fewShotMessages,
+        greeting,
+        { role: 'user', content: '안녕' },
+      ]);
+    });
+
+    it('turn 성공 후 저장 turn이 임계를 넘으면 persistence.summarize를 호출한다', async () => {
+      // greeting 제외 turn 수가 임계 초과가 되도록 과거 turn 적재
+      const past = Array.from({ length: SUMMARY_TURN_THRESHOLD }, (_, i) => ({
+        role: (i % 2 === 0 ? 'user' : 'model') as 'user' | 'model',
+        content: `과거${i}`,
+      }));
+      const persistence = makePersistence(past, null);
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona2, persistence));
+      await waitFor(() => expect(result.current.messages.length).toBeGreaterThan(1));
+
+      act(() => result.current.send('새 질문'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      act(() => {
+        sse.push({ type: 'done', message: { role: 'model', content: '답변' } });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+
+      await waitFor(() => expect(persistence.summarize).toHaveBeenCalled());
+    });
+
+    it('임계 이하면 summarize를 호출하지 않는다', async () => {
+      const persistence = makePersistence([], null);
+      const sse = sseResponse();
+      fetchMock.mockResolvedValueOnce(sse.response);
+      const { result } = renderHook(() => useChatStream(persona2, persistence));
+      await waitFor(() => expect(persistence.loadSummary).toHaveBeenCalled());
+
+      act(() => result.current.send('안녕'));
+      await waitFor(() => expect(result.current.status).toBe('streaming'));
+      act(() => {
+        sse.push({ type: 'done', message: { role: 'model', content: '반가워요' } });
+        sse.close();
+      });
+      await waitFor(() => expect(result.current.status).toBe('idle'));
+
+      expect(persistence.summarize).not.toHaveBeenCalled();
     });
   });
 

@@ -1,0 +1,67 @@
+lesson_id: l_2026_06_14_y_endpoint_http_test_gap
+category: define_weakness
+title: "신규 HTTP 엔드포인트가 서비스 단위 테스트만 가짐 — controller 배선(라우트·status·DTO)은 추론으로만 검증"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+
+sources:
+  - run_id: dev-cycle/2026_06_14_regenerate-edit (비정식 — verify_report 기반 회고)
+    file_ref: "dev-cycle/2026_06_14_regenerate-edit/verify_report.md#iteration-1-notes-2"
+    quote: |
+      PUT 엔드포인트 controller/HTTP 레벨 테스트는 없음(서비스 단위만) — 기존 conversations
+      엔드포인트들도 동일 패턴이라 누락/회귀 아님.
+    observed_at: "2026-06-14"
+  - run_id: dev-cycle/2026_06_13_character-crud-backend (비정식 — verify_report 기반 회고)
+    file_ref: "dev-cycle/2026_06_13_character-crud-backend/verify_report.md#독립-검증-포인트"
+    quote: |
+      라우트 순서: `GET /characters/public`이 `:id`보다 먼저 선언됨 → 가로채임 없음.
+      (라우트 순서 정합은 테스트가 아니라 verifier의 추론으로만 확인됨 — public<:id 가로채기
+      버그가 테스트 그물엔 없었음)
+    observed_at: "2026-06-14"
+
+n_cycles: 2
+
+pattern:
+  trigger: "새 NestJS REST 라우트(컨트롤러 + DTO)를 추가하면서 PRD 성공 기준이 서비스 로직 단위 테스트만 요구"
+  symptom: "신규 엔드포인트(#16 characters CRUD, #18 PUT replace, #15 POST summarize)가 서비스 단위 테스트만 갖고, 라우트 순서·status code·DTO whitelist 거부는 supertest HTTP 테스트로 검증되지 않음. 기존 chat 모듈엔 *.http.spec이 있는데 신규 모듈엔 없어 테스트 규율 후퇴"
+  failure_mode: "컨트롤러 배선 회귀(라우트 가로채기·잘못된 status·검증 누락)가 테스트 그물 밖으로 샘. 실제 #16의 public/:id 라우트 순서 버그 위험은 verifier 추론으로만 방지됨(테스트 없음)"
+
+seed_taxonomy_match: silent_skip
+
+confidence: weak
+confidence_reason: |
+  n=2 (#18 명시 + #16 라우트 순서). 동일 trigger(새 엔드포인트)이나 symptom 형태가 다양
+  (missing-http-test vs route-order-by-reasoning). 실제 버그는 미발생(잠재) — weak.
+  한 사이클만 더 같은 형태로 반복되면 moderate 승급.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    신규 NestJS 엔드포인트를 추가하는 dev-cycle은 PRD 성공 기준에
+    "supertest HTTP 계약 테스트 ≥1 (라우트 매칭 + 성공 status + DTO 거부 1건)"을 포함.
+    특히 같은 컨트롤러에 리터럴 경로와 `:param` 경로가 공존하면 라우트 순서 회귀 테스트 필수.
+    별도 강한 후보: <project>/CLAUDE.md 의 테스트 규약에 동일 항목 1줄 추가(승인 대기).
+
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 dev-cycle Phase 1: 신규 엔드포인트면 성공 기준에 HTTP 계약 테스트 항목 강제"
+  - "다음 dev-cycle Phase 2: 리터럴/:param 경로 공존 시 라우트 순서 테스트"
+
+remaining_ambiguity:
+  - "기존 conversations/characters 모듈에 소급해 HTTP 테스트를 추가할지(부채 상환) vs 신규에만 적용할지"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    verify와 같은 세션. verifier가 '기존 패턴과 일관'이라 비차단 처리한 점을 learn이
+    패턴 부채로 재해석 — 독립 세션 재검이면 신뢰 상승.

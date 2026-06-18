@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FinishReason, type GenerateContentResponse, type GoogleGenAI } from '@google/genai';
-import type { ChatRequest, ChatResponse, ChatStreamEvent } from '@ai-character/shared';
+import type { ChatMessage, ChatRequest, ChatResponse, ChatStreamEvent } from '@ai-character/shared';
 import { GENAI_CLIENT } from './chat.constants';
 
 const GEMINI_TIMEOUT_MS = 30_000;
@@ -27,15 +27,14 @@ export class ChatService {
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
     const contents = this.toContents(request);
+    const systemInstruction = this.buildSystemInstruction(request);
 
     try {
       const result = await this.withTimeout(
         client.models.generateContent({
           model,
           contents,
-          ...(request.systemInstruction !== undefined
-            ? { config: { systemInstruction: request.systemInstruction } }
-            : {}),
+          ...(systemInstruction !== undefined ? { config: { systemInstruction } } : {}),
         }),
       );
 
@@ -65,17 +64,70 @@ export class ChatService {
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
 
+    const systemInstruction = this.buildSystemInstruction(request);
     const upstream = await client.models.generateContentStream({
       model,
       contents: this.toContents(request),
       config: {
-        ...(request.systemInstruction !== undefined
-          ? { systemInstruction: request.systemInstruction }
-          : {}),
+        ...(systemInstruction !== undefined ? { systemInstruction } : {}),
         ...(signal ? { abortSignal: signal } : {}),
       },
     });
     return this.toStreamEvents(upstream);
+  }
+
+  /**
+   * #15 과거 대화 요약(장기기억) 생성. 직전 요약을 누적 반영해 보존적으로 압축한다.
+   * 캐릭터 연기와 분리된 별도 system instruction으로 호출한다.
+   */
+  async summarize(priorSummary: string | null, turns: ChatMessage[]): Promise<string> {
+    const client = this.requireClient();
+    const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
+    const serialized = turns
+      .map((t) => `${t.role === 'user' ? '사용자' : '캐릭터'}: ${t.content}`)
+      .join('\n');
+    const prompt = [
+      priorSummary ? `기존 요약:\n${priorSummary}\n` : '',
+      '아래 대화를 한국어로 간결히 요약하라. 인물·사건·약속·감정 변화 등 이후 대화에 필요한 맥락을 보존하라.',
+      '',
+      '대화:',
+      serialized,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    try {
+      const result = await this.withTimeout(
+        client.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            systemInstruction:
+              '너는 대화 내용을 보존적으로 요약하는 도우미다. 캐릭터 연기는 하지 않는다.',
+          },
+        }),
+      );
+      const text = result.text;
+      if (!text) throw new BadGatewayException('Gemini가 빈 요약을 반환했습니다.');
+      return text;
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      this.logger.error('요약 생성 실패', err instanceof Error ? err.stack : String(err));
+      throw new BadGatewayException('요약 생성에 실패했습니다.');
+    }
+  }
+
+  /** #15 conversationSummary가 있으면 systemInstruction에 '이전 대화 요약' 블록을 접합 */
+  private buildSystemInstruction(request: ChatRequest): string | undefined {
+    const base = request.systemInstruction;
+    const summary = request.conversationSummary;
+    if (!summary) return base;
+    const block = [
+      '## 이전 대화 요약',
+      summary,
+      '위 요약은 과거 대화의 압축이다. 일관성을 위해 참고하되 그대로 반복하지 마라.',
+    ].join('\n');
+    return base ? `${base}\n\n${block}` : block;
   }
 
   /**

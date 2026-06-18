@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { SUMMARY_RECENT_TURNS, SUMMARY_TURN_THRESHOLD } from '@ai-character/shared';
 import { ConversationsService } from '../src/conversations/conversations.service';
 
 /**
@@ -11,13 +12,18 @@ describe('ConversationsService', () => {
     create: jest.fn(),
     update: jest.fn(),
   };
-  const message = { create: jest.fn() };
-  const prisma = { conversation, message } as never;
+  const message = { create: jest.fn(), deleteMany: jest.fn() };
+  const $transaction = jest.fn();
+  const prisma = { conversation, message, $transaction } as never;
+  const summarize = jest.fn();
+  const chatService = { summarize } as never;
   let service: ConversationsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new ConversationsService(prisma);
+    // 트랜잭션 콜백은 같은 prisma 모킹을 tx로 받아 실행한다
+    $transaction.mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma));
+    service = new ConversationsService(prisma, chatService);
   });
 
   describe('getOrCreate', () => {
@@ -98,6 +104,132 @@ describe('ConversationsService', () => {
         NotFoundException,
       );
       expect(conversation.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('replaceMessages (#18 truncate-after)', () => {
+    const turns = [
+      { role: 'user' as const, content: '편집된 질문' },
+      { role: 'model' as const, content: '새 답변' },
+    ];
+
+    it('소유자면 트랜잭션으로 기존 메시지를 비우고 주어진 배열을 순서대로 재삽입한다', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', browserId: 'b1' });
+      const result = { id: 'c1', messages: turns };
+      conversation.update.mockResolvedValue(result);
+
+      const out = await service.replaceMessages('c1', 'b1', turns);
+
+      expect(out).toBe(result);
+      expect($transaction).toHaveBeenCalledTimes(1);
+      // (a) 기존 메시지 전체 삭제
+      expect(message.deleteMany).toHaveBeenCalledWith({ where: { conversationId: 'c1' } });
+      // (b) 주어진 배열을 순서대로 nested create
+      const arg = conversation.update.mock.calls[0][0];
+      expect(arg.where).toEqual({ id: 'c1' });
+      const created = arg.data.messages.create as { role: string; content: string }[];
+      expect(created.map((m) => ({ role: m.role, content: m.content }))).toEqual(turns);
+      // 삭제가 재삽입보다 먼저 호출됨
+      expect(message.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+        conversation.update.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('빈 배열이면 모든 메시지를 비운다', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', browserId: 'b1' });
+      conversation.update.mockResolvedValue({ id: 'c1', messages: [] });
+
+      await service.replaceMessages('c1', 'b1', []);
+
+      expect(message.deleteMany).toHaveBeenCalledWith({ where: { conversationId: 'c1' } });
+      expect(conversation.update.mock.calls[0][0].data.messages.create).toEqual([]);
+    });
+
+    it('소유자가 아니면 NotFound (트랜잭션 미실행)', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', browserId: 'owner' });
+      await expect(service.replaceMessages('c1', 'attacker', turns)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect($transaction).not.toHaveBeenCalled();
+    });
+
+    it('대화가 없으면 NotFound', async () => {
+      conversation.findUnique.mockResolvedValue(null);
+      await expect(service.replaceMessages('nope', 'b1', turns)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect($transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('summarizeIfNeeded (#15)', () => {
+    const makeMessages = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'model',
+        content: `메시지 ${i}`,
+      }));
+
+    it('저장 turn이 임계 이하면 no-op (요약 호출·갱신 없음, 현 summary 반환)', async () => {
+      conversation.findUnique.mockResolvedValue({
+        id: 'c1',
+        browserId: 'b1',
+        summary: null,
+        summarizedCount: 0,
+        messages: makeMessages(SUMMARY_TURN_THRESHOLD), // 임계 이하(초과 아님)
+      });
+
+      const result = await service.summarizeIfNeeded('c1', 'b1');
+
+      expect(summarize).not.toHaveBeenCalled();
+      expect(conversation.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ summary: null, summarizedCount: 0 });
+    });
+
+    it('임계 초과면 최근 N 제외 turn을 요약해 summary/summarizedCount를 영속한다', async () => {
+      const total = SUMMARY_TURN_THRESHOLD + 4;
+      const messages = makeMessages(total);
+      conversation.findUnique.mockResolvedValue({
+        id: 'c1',
+        browserId: 'b1',
+        summary: '기존 요약',
+        summarizedCount: 2,
+        messages,
+      });
+      summarize.mockResolvedValue('새 요약');
+      conversation.update.mockResolvedValue({ id: 'c1' });
+
+      const result = await service.summarizeIfNeeded('c1', 'b1');
+
+      const expectedOlder = total - SUMMARY_RECENT_TURNS;
+      // 직전 요약 + 오래된 turn(최근 N 제외)으로 요약 호출
+      expect(summarize).toHaveBeenCalledTimes(1);
+      expect(summarize.mock.calls[0][0]).toBe('기존 요약');
+      expect((summarize.mock.calls[0][1] as unknown[]).length).toBe(expectedOlder);
+      // 영속
+      expect(conversation.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { summary: '새 요약', summarizedCount: expectedOlder },
+      });
+      expect(result).toEqual({ summary: '새 요약', summarizedCount: expectedOlder });
+    });
+
+    it('소유자가 아니면 NotFound (요약 안 함)', async () => {
+      conversation.findUnique.mockResolvedValue({
+        id: 'c1',
+        browserId: 'owner',
+        messages: makeMessages(20),
+      });
+      await expect(service.summarizeIfNeeded('c1', 'attacker')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(summarize).not.toHaveBeenCalled();
+    });
+
+    it('대화가 없으면 NotFound', async () => {
+      conversation.findUnique.mockResolvedValue(null);
+      await expect(service.summarizeIfNeeded('nope', 'b1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

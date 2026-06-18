@@ -3,7 +3,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationWithMessages } from '@ai-character/shared';
-import { appendMessage, ensureConversation, fetchConversation } from './conversations-api';
+import {
+  appendMessage,
+  ensureConversation,
+  fetchConversation,
+  replaceMessages,
+  summarizeConversation,
+} from './conversations-api';
 
 const BASE = 'http://localhost:4000';
 
@@ -97,6 +103,42 @@ describe('conversations-api (#14)', () => {
         role: 'user',
         content: '안녕',
       });
+    });
+  });
+
+  describe('replaceMessages (#18)', () => {
+    it('PUT /conversations/:id/messages 에 browserId/messages 를 보낸다', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'c1', messages: [] }));
+      const messages = [
+        { role: 'user' as const, content: '편집' },
+        { role: 'model' as const, content: '새 답변' },
+      ];
+
+      await replaceMessages('c1', 'b1', messages);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/conversations/c1/messages`);
+      expect((init as RequestInit).method).toBe('PUT');
+      expect(JSON.parse((init as RequestInit).body as string)).toEqual({ browserId: 'b1', messages });
+    });
+  });
+
+  describe('summarizeConversation (#15)', () => {
+    it('POST /conversations/:id/summarize 에 browserId를 보내고 SummaryResult를 반환한다', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ summary: '요약본', summarizedCount: 8 }));
+
+      const result = await summarizeConversation('c1', 'b1');
+
+      expect(result).toEqual({ summary: '요약본', summarizedCount: 8 });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/conversations/c1/summarize`);
+      expect((init as RequestInit).method).toBe('POST');
+      expect(JSON.parse((init as RequestInit).body as string)).toEqual({ browserId: 'b1' });
+    });
+
+    it('실패 시 null 요약 결과를 반환한다 (best-effort)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
+      expect(await summarizeConversation('c1', 'b1')).toEqual({ summary: null, summarizedCount: 0 });
     });
   });
 });

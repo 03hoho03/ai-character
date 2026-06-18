@@ -3,7 +3,7 @@ import {
   GatewayTimeoutException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { ChatRequest } from '@ai-character/shared';
+import type { ChatMessage, ChatRequest } from '@ai-character/shared';
 import { ChatService } from '../src/chat/chat.service';
 
 const cfg = (model?: string) =>
@@ -96,5 +96,57 @@ describe('ChatService', () => {
     await expect(noKeyService.chat(baseRequest)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
+  });
+
+  describe('conversationSummary 주입 (#15)', () => {
+    it('conversationSummary가 있으면 systemInstruction에 요약 블록을 접합한다', async () => {
+      generateContent.mockResolvedValue({ text: 'ok' });
+
+      await service.chat({ ...baseRequest, conversationSummary: '주인공은 마법사를 만났다.' });
+
+      const si = generateContent.mock.calls[0][0].config.systemInstruction as string;
+      expect(si).toContain('너는 친절한 마법사다.'); // 원본 유지
+      expect(si).toContain('주인공은 마법사를 만났다.'); // 요약 접합
+    });
+
+    it('conversationSummary가 없으면 systemInstruction을 그대로 둔다', async () => {
+      generateContent.mockResolvedValue({ text: 'ok' });
+
+      await service.chat(baseRequest);
+
+      expect(generateContent.mock.calls[0][0].config.systemInstruction).toBe('너는 친절한 마법사다.');
+    });
+  });
+
+  describe('summarize (#15)', () => {
+    const turns: ChatMessage[] = [
+      { role: 'user', content: '마법을 배우고 싶어' },
+      { role: 'model', content: '룬부터 익히거라' },
+    ];
+
+    it('Gemini로 요약을 생성해 문자열로 반환하고, 대화 내용을 프롬프트에 담는다', async () => {
+      generateContent.mockResolvedValue({ text: '사용자는 마법 입문을 원했고 룬 학습을 안내받았다.' });
+
+      const out = await service.summarize(null, turns);
+
+      expect(out).toBe('사용자는 마법 입문을 원했고 룬 학습을 안내받았다.');
+      const prompt = generateContent.mock.calls[0][0].contents[0].parts[0].text as string;
+      expect(prompt).toContain('마법을 배우고 싶어');
+      expect(prompt).toContain('룬부터 익히거라');
+    });
+
+    it('직전 요약을 누적 반영한다 (프롬프트에 포함)', async () => {
+      generateContent.mockResolvedValue({ text: '갱신된 요약' });
+
+      await service.summarize('기존 요약 내용', turns);
+
+      const prompt = generateContent.mock.calls[0][0].contents[0].parts[0].text as string;
+      expect(prompt).toContain('기존 요약 내용');
+    });
+
+    it('빈 응답이면 502로 매핑한다', async () => {
+      generateContent.mockResolvedValue({ text: undefined });
+      await expect(service.summarize(null, turns)).rejects.toBeInstanceOf(BadGatewayException);
+    });
   });
 });

@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { ChatMessage } from '@ai-character/shared';
+import {
+  SUMMARY_RECENT_TURNS,
+  SUMMARY_TURN_THRESHOLD,
+  type ChatMessage,
+  type SummaryResult,
+} from '@ai-character/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChatService } from '../chat/chat.service';
 
 /**
  * #14 대화/메시지 영속화 서비스.
@@ -8,7 +14,10 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chat: ChatService,
+  ) {}
 
   /** (browserId, personaId) 대화를 get-or-create */
   async getOrCreate(browserId: string, personaId: string) {
@@ -51,5 +60,76 @@ export class ConversationsService {
       include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
     return updated.messages[0];
+  }
+
+  /**
+   * #18 메시지 열 전체 교체 — 편집/재생성의 후속 turn truncate를 한 번에 달성.
+   * 트랜잭션으로 기존 메시지를 비우고 주어진 배열을 순서대로 재삽입한다.
+   * createdAt을 i만큼 증가시켜 restore(createdAt asc)가 입력 순서를 그대로 보존하게 한다.
+   */
+  async replaceMessages(
+    conversationId: string,
+    browserId: string,
+    messages: ChatMessage[],
+  ) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation || conversation.browserId !== browserId) {
+      throw new NotFoundException('대화를 찾을 수 없습니다.');
+    }
+
+    const base = Date.now();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.message.deleteMany({ where: { conversationId } });
+      return tx.conversation.update({
+        where: { id: conversationId },
+        data: {
+          updatedAt: new Date(),
+          messages: {
+            create: messages.map((m, i) => ({
+              role: m.role,
+              content: m.content,
+              createdAt: new Date(base + i),
+            })),
+          },
+        },
+        include: { messages: { orderBy: { createdAt: 'asc' } } },
+      });
+    });
+  }
+
+  /**
+   * #15 임계 초과 시 과거 turn 자동 요약(장기기억). 소유자 가드(불일치 404).
+   * 최근 N turn은 원문 유지, 그 앞 turn을 직전 요약과 함께 Gemini로 압축해 영속한다.
+   * 임계 이하면 no-op으로 현재 요약 상태를 그대로 반환한다.
+   */
+  async summarizeIfNeeded(conversationId: string, browserId: string): Promise<SummaryResult> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!conversation || conversation.browserId !== browserId) {
+      throw new NotFoundException('대화를 찾을 수 없습니다.');
+    }
+
+    const messages = conversation.messages;
+    if (messages.length <= SUMMARY_TURN_THRESHOLD) {
+      return {
+        summary: conversation.summary ?? null,
+        summarizedCount: conversation.summarizedCount ?? 0,
+      };
+    }
+
+    const older = messages.slice(0, messages.length - SUMMARY_RECENT_TURNS);
+    const summary = await this.chat.summarize(
+      conversation.summary ?? null,
+      older.map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+    );
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { summary, summarizedCount: older.length },
+    });
+    return { summary, summarizedCount: older.length };
   }
 }
