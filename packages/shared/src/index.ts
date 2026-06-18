@@ -90,6 +90,32 @@ export interface CreateConversationRequest {
   personaId: string;
 }
 
+/**
+ * 캐릭터 영속화 contract (#16) — web/api 공용 단일 출처.
+ * 캐릭터 = 소유자(browserId)가 붙고 공개/비공개를 갖는 Persona. id는 클라이언트 제공(`usr-<uuid>`).
+ * 날짜는 JSON 직렬화 형태(ISO 문자열) 기준.
+ */
+export interface CharacterRecord extends Persona {
+  /** 소유자 = 익명 browserId */
+  browserId: string;
+  /** 공개 목록/탐색 노출 여부 (#16: 목록+상세 조회까지, 타 사용자 채팅은 #19) */
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** POST /characters 요청 — Persona(id 포함) + 소유자 + 공개 여부. 같은 id 재요청은 소유자면 upsert */
+export interface CreateCharacterRequest extends Persona {
+  browserId: string;
+  isPublic?: boolean;
+}
+
+/** PATCH /characters/:id 요청 — 소유자 인증(browserId) + 부분 갱신 필드. id는 경로에서 받는다 */
+export interface UpdateCharacterRequest extends Partial<Omit<Persona, 'id'>> {
+  browserId: string;
+  isPublic?: boolean;
+}
+
 /** POST /conversations/:id/messages 요청 */
 export interface AppendMessageRequest {
   browserId: string;

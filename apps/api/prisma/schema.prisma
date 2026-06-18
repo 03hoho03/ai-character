@@ -30,3 +30,24 @@ model Message {
 
   @@index([conversationId, createdAt])
 }
+
+// #16 캐릭터 영속화. 소유자 = 익명 browserId. id = 클라이언트 제공(`usr-<uuid>`) → #21 로컬→DB 이전이 id 충돌 없이 이뤄진다.
+// 구조화 필드(exampleDialogue/prohibitions)는 Json — Persona 형태를 그대로 보존(정규화 이득 없음).
+model Character {
+  id              String   @id // 클라이언트 제공 usr-<uuid>
+  browserId       String
+  name            String
+  tagline         String
+  personality     String
+  speechStyle     String
+  worldview       String
+  greeting        String
+  exampleDialogue Json     // ExampleDialogueTurn[] — { user, model }
+  prohibitions    Json? // string[] | null
+  isPublic        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([browserId]) // 내 캐릭터 목록
+  @@index([isPublic, updatedAt]) // 공개 캐릭터 목록(최신순)
+}

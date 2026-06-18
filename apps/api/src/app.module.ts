@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { ChatModule } from './chat/chat.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { CharactersModule } from './characters/characters.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     PrismaModule,
     ChatModule,
     ConversationsModule,
+    CharactersModule,
   ],
   controllers: [AppController],
   providers: [
