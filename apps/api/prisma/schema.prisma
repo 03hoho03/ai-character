@@ -9,6 +9,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// #28 계정 모델. 익명 browserId 탈피의 토대(소유 전환은 #31/#32). 이메일+비번(argon2 해시).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
 model Conversation {
   id        String    @id @default(cuid())
   browserId String
