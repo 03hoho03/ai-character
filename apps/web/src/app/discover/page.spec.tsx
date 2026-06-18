@@ -56,7 +56,11 @@ describe('DiscoverPage (#24)', () => {
     fireEvent.submit(screen.getByRole('search'));
 
     await waitFor(() =>
-      expect(mockFetch).toHaveBeenCalledWith('마법', { category: undefined, tag: undefined }),
+      expect(mockFetch).toHaveBeenCalledWith('마법', {
+        category: undefined,
+        tag: undefined,
+        includeAdult: false,
+      }),
     );
     await waitFor(() => expect(screen.getByText('마법사')).toBeTruthy());
   });
@@ -71,7 +75,11 @@ describe('DiscoverPage (#24)', () => {
     fireEvent.click(screen.getByText('#마법'));
 
     await waitFor(() =>
-      expect(mockFetch).toHaveBeenLastCalledWith('', { category: undefined, tag: '마법' }),
+      expect(mockFetch).toHaveBeenLastCalledWith('', {
+        category: undefined,
+        tag: '마법',
+        includeAdult: false,
+      }),
     );
     await waitFor(() => expect(screen.getByText('간달프')).toBeTruthy());
     // 활성 필터 바에 해제 버튼 노출
@@ -87,9 +95,33 @@ describe('DiscoverPage (#24)', () => {
     fireEvent.click(screen.getByText('판타지'));
 
     await waitFor(() =>
-      expect(mockFetch).toHaveBeenLastCalledWith('', { category: '판타지', tag: undefined }),
+      expect(mockFetch).toHaveBeenLastCalledWith('', {
+        category: '판타지',
+        tag: undefined,
+        includeAdult: false,
+      }),
     );
     expect(screen.getByText('카테고리: 판타지 ✕')).toBeTruthy();
+  });
+
+  // #26 성인 콘텐츠 토글 + 배지
+  it('성인 콘텐츠 포함 토글 시 includeAdult=true로 재조회한다(안전 기본 off)', async () => {
+    mockFetch.mockResolvedValueOnce([char('엘베리아')]); // 초기(일반만)
+    render(<DiscoverPage />);
+    await waitFor(() => expect(screen.getByText('엘베리아')).toBeTruthy());
+
+    mockFetch.mockResolvedValueOnce([char('성인캐릭', { contentRating: 'adult' })]);
+    fireEvent.click(screen.getByLabelText('성인 콘텐츠 포함'));
+
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenLastCalledWith('', {
+        category: undefined,
+        tag: undefined,
+        includeAdult: true,
+      }),
+    );
+    // 성인 캐릭터 카드에 19 배지 노출
+    await waitFor(() => expect(screen.getByText('19')).toBeTruthy());
   });
 
   it('결과가 없으면 빈 상태 문구를 노출한다', async () => {

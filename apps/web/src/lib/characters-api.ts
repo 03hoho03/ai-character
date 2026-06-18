@@ -26,7 +26,7 @@ export async function fetchOwnedCharacters(browserId: string): Promise<Character
  */
 export async function fetchPublicCharacters(
   q?: string,
-  filters: { category?: string; tag?: string } = {},
+  filters: { category?: string; tag?: string; includeAdult?: boolean } = {},
 ): Promise<CharacterRecord[]> {
   const params = new URLSearchParams();
   const keyword = q?.trim();
@@ -35,6 +35,7 @@ export async function fetchPublicCharacters(
   if (keyword) params.set('q', keyword);
   if (category) params.set('category', category);
   if (tag) params.set('tag', tag);
+  if (filters.includeAdult) params.set('includeAdult', 'true');
   const qs = params.toString();
   const url = qs ? `${API_URL}/characters/public?${qs}` : `${API_URL}/characters/public`;
   try {

@@ -119,6 +119,17 @@ export function CharacterForm({
         />
       </label>
 
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={draft.contentRating === 'adult'}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, contentRating: e.target.checked ? 'adult' : 'all' }))
+          }
+        />
+        <span className={sectionTitle}>성인 콘텐츠 (공개 탐색에서 기본 숨김)</span>
+      </label>
+
       <fieldset className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <legend className={sectionTitle}>예시 대화</legend>

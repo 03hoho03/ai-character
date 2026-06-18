@@ -40,10 +40,16 @@ export class CharactersService {
 
   /**
    * 공개 캐릭터 목록(최신순). #24 q=이름/한줄소개 대소문자 무시 contains 검색,
-   * #25 category=등호 / tag=tags 배열 포함(has) 필터. 셋은 AND로 결합한다.
+   * #25 category=등호 / tag=tags 배열 포함(has) 필터, #26 등급 필터. 모두 AND로 결합한다.
    * isPublic:true는 어떤 필터 조합에서도 고정 — 비공개는 절대 노출하지 않는다.
+   * #26 안전 기본값: includeAdult!=='true'면 contentRating='all'로 성인을 제외(opt-in 노출).
    */
-  async listPublic(params: { q?: string; category?: string; tag?: string } = {}) {
+  async listPublic(params: {
+    q?: string;
+    category?: string;
+    tag?: string;
+    includeAdult?: string;
+  } = {}) {
     const keyword = params.q?.trim();
     const category = params.category?.trim();
     const tag = params.tag?.trim();
@@ -56,6 +62,7 @@ export class CharactersService {
     }
     if (category) where.category = category;
     if (tag) where.tags = { has: tag };
+    if (params.includeAdult !== 'true') where.contentRating = 'all';
     return this.prisma.character.findMany({ where, orderBy: { updatedAt: 'desc' } });
   }
 
@@ -102,6 +109,7 @@ export class CharactersService {
       prohibitions: (dto.prohibitions ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       category: dto.category ?? null,
       tags: dto.tags ?? [],
+      contentRating: dto.contentRating ?? 'all',
       isPublic: dto.isPublic ?? false,
     };
   }

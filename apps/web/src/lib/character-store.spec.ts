@@ -229,6 +229,15 @@ describe('character-store (#21 서버 백드)', () => {
         expect(empty.persona.tags).toBeUndefined();
       }
     });
+    it('sanitizeForSave: #26 contentRating은 adult가 아니면 all로 정규화(안전 기본값)', async () => {
+      const { sanitizeForSave } = await load();
+
+      const adult = sanitizeForSave(validDraft({ contentRating: 'adult' }));
+      expect(adult.ok && adult.persona.contentRating).toBe('adult');
+
+      const def = sanitizeForSave(validDraft({ contentRating: undefined }));
+      expect(def.ok && def.persona.contentRating).toBe('all');
+    });
     it('resolvePersona: 템플릿 우선 + 사용자 목록 합류', async () => {
       const { resolvePersona } = await load();
       const tpl = PERSONA_TEMPLATES[0];

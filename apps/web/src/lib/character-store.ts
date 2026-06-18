@@ -166,6 +166,8 @@ export function sanitizeForSave(draft: Persona): SanitizeResult {
   const tags = Array.from(
     new Set((draft.tags ?? []).map((t) => t.trim()).filter((t) => t !== '')),
   );
+  // #26 등급 정규화 — adult가 아니면 명시적으로 all(서버 기본과 일치, 안전 기본값)
+  const contentRating = draft.contentRating === 'adult' ? 'adult' : 'all';
 
   if (errors.length > 0) return { ok: false, errors };
 
@@ -178,6 +180,7 @@ export function sanitizeForSave(draft: Persona): SanitizeResult {
       prohibitions: prohibitions.length > 0 ? prohibitions : undefined,
       category,
       tags: tags.length > 0 ? tags : undefined,
+      contentRating,
     },
   };
 }

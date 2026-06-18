@@ -171,6 +171,21 @@ describe('characters-api (#21)', () => {
       expect(params.get('tag')).toBe('마법');
     });
 
+    // #26 성인 포함 opt-in
+    it('includeAdult=true면 ?includeAdult=true 동반, 기본/false면 생략', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      await fetchPublicCharacters(undefined, { includeAdult: true });
+      expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('includeAdult')).toBe(
+        'true',
+      );
+
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      await fetchPublicCharacters(undefined, { includeAdult: false });
+      expect(
+        new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('includeAdult'),
+      ).toBeNull();
+    });
+
     it('실패/네트워크 에러면 빈 배열(best-effort)', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
       expect(await fetchPublicCharacters('x')).toEqual([]);

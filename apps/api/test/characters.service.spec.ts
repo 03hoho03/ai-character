@@ -96,8 +96,9 @@ describe('CharactersService', () => {
       const result = await service.listPublic();
 
       expect(result).toBe(list);
+      // #26 기본 공개목록은 일반(all)만 — 성인은 opt-in 없이 노출 안 됨
       expect(character.findMany).toHaveBeenCalledWith({
-        where: { isPublic: true },
+        where: { isPublic: true, contentRating: 'all' },
         orderBy: { updatedAt: 'desc' },
       });
     });
@@ -105,11 +106,12 @@ describe('CharactersService', () => {
     it('#24 q가 있으면 isPublic + name/tagline contains(대소문자 무시) OR로 조회한다', async () => {
       character.findMany.mockResolvedValue([]);
 
-      await service.listPublic('마법');
+      await service.listPublic({ q: '마법' });
 
       expect(character.findMany).toHaveBeenCalledWith({
         where: {
           isPublic: true,
+          contentRating: 'all',
           OR: [
             { name: { contains: '마법', mode: 'insensitive' } },
             { tagline: { contains: '마법', mode: 'insensitive' } },
@@ -119,13 +121,13 @@ describe('CharactersService', () => {
       });
     });
 
-    it('#24 q가 공백/빈 문자열이면 필터 없이 전체 공개 목록으로 처리한다', async () => {
+    it('#24 q가 공백/빈 문자열이면 검색 없이 공개 일반 목록으로 처리한다', async () => {
       character.findMany.mockResolvedValue([]);
 
-      await service.listPublic('   ');
+      await service.listPublic({ q: '   ' });
 
       expect(character.findMany).toHaveBeenCalledWith({
-        where: { isPublic: true },
+        where: { isPublic: true, contentRating: 'all' },
         orderBy: { updatedAt: 'desc' },
       });
     });
@@ -133,10 +135,31 @@ describe('CharactersService', () => {
     it('#24 비공개는 q 검색에서도 항상 제외(where에 isPublic:true 고정)', async () => {
       character.findMany.mockResolvedValue([]);
 
-      await service.listPublic('아무거나');
+      await service.listPublic({ q: '아무거나' });
 
       const arg = character.findMany.mock.calls[0][0];
       expect(arg.where.isPublic).toBe(true);
+    });
+
+    it('#25 category/tag 필터를 등호/has로 AND 결합한다', async () => {
+      character.findMany.mockResolvedValue([]);
+
+      await service.listPublic({ category: '판타지', tag: '마법' });
+
+      const where = character.findMany.mock.calls[0][0].where;
+      expect(where.isPublic).toBe(true);
+      expect(where.category).toBe('판타지');
+      expect(where.tags).toEqual({ has: '마법' });
+    });
+
+    it('#26 includeAdult=true면 contentRating 제약을 풀어 성인 포함', async () => {
+      character.findMany.mockResolvedValue([]);
+
+      await service.listPublic({ includeAdult: 'true' });
+
+      const where = character.findMany.mock.calls[0][0].where;
+      expect(where.isPublic).toBe(true);
+      expect(where.contentRating).toBeUndefined();
     });
   });
 

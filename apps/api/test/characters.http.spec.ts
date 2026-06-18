@@ -48,7 +48,8 @@ describe('GET /characters/public (HTTP contract)', () => {
     expect(res.body).toEqual([publicChar]);
     // :id로 가로채였다면 findUnique 경로 → 목록이 아님. findMany 호출이 라우트 순서 정합을 증명
     expect(findMany).toHaveBeenCalledTimes(1);
-    expect(findMany.mock.calls[0][0].where).toEqual({ isPublic: true });
+    // #26 기본 공개목록은 일반(all)만 — 성인은 opt-in 없이는 노출되지 않는다
+    expect(findMany.mock.calls[0][0].where).toEqual({ isPublic: true, contentRating: 'all' });
   });
 
   it('q=마법 → 200 + q를 name/tagline 필터로 서비스에 전달', async () => {
@@ -114,6 +115,66 @@ describe('GET /characters/public (HTTP contract)', () => {
     const res = await request(app.getHttpServer())
       .get('/characters/public')
       .query('tag=a&tag=b');
+
+    expect(res.status).toBe(400);
+  });
+
+  // #26 콘텐츠 등급 필터 — 기본 일반만, 성인은 opt-in
+  it('기본(includeAdult 없음) → contentRating=all로 성인 제외(내용 단언)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ category: '판타지' });
+
+    expect(res.status).toBe(200);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.isPublic).toBe(true);
+    // baseline이 약화돼(성인 노출) GREEN이면 안 됨 — 등급 값 자체를 단언
+    expect(where.contentRating).toBe('all');
+  });
+
+  it('includeAdult=true → contentRating 제약을 풀어 성인 포함(등급 키 부재)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ includeAdult: 'true' });
+
+    expect(res.status).toBe(200);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.isPublic).toBe(true);
+    expect(where.contentRating).toBeUndefined();
+  });
+
+  it('includeAdult=false → 명시적으로도 일반만(contentRating=all)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ includeAdult: 'false' });
+
+    expect(res.status).toBe(200);
+    expect(findMany.mock.calls[0][0].where.contentRating).toBe('all');
+  });
+
+  it('includeAdult가 true/false 외 값이면 400 (Query DTO @IsIn 거부)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/characters/public')
+      .query({ includeAdult: 'yes' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /characters: contentRating이 all/adult 외면 400 (@IsIn 거부 — 신뢰경계)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/characters')
+      .send({
+        id: 'usr-x',
+        browserId: 'b1',
+        name: '이름',
+        tagline: '한줄',
+        personality: '성격',
+        speechStyle: '말투',
+        worldview: '세계관',
+        greeting: '인사',
+        exampleDialogue: [{ user: 'u', model: 'm' }],
+        contentRating: 'teen', // 허용 enum 밖
+      });
 
     expect(res.status).toBe(400);
   });

@@ -2,16 +2,21 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   ValidateNested,
 } from 'class-validator';
 import type {
+  ContentRating,
   CreateCharacterRequest,
   ExampleDialogueTurn,
   UpdateCharacterRequest,
 } from '@ai-character/shared';
+
+/** #26 콘텐츠 등급 허용값 — DTO @IsIn 단일 출처 */
+const CONTENT_RATINGS: ContentRating[] = ['all', 'adult'];
 
 /** few-shot 예시 대화 1턴 — 중첩 검증용 */
 class ExampleDialogueTurnDto implements ExampleDialogueTurn {
@@ -73,6 +78,10 @@ export class CreateCharacterDto implements CreateCharacterRequest {
   tags?: string[];
 
   @IsOptional()
+  @IsIn(CONTENT_RATINGS)
+  contentRating?: ContentRating;
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 }
@@ -129,6 +138,10 @@ export class UpdateCharacterDto implements UpdateCharacterRequest {
   tags?: string[];
 
   @IsOptional()
+  @IsIn(CONTENT_RATINGS)
+  contentRating?: ContentRating;
+
+  @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
 }
@@ -156,4 +169,12 @@ export class PublicSearchQueryDto {
   @IsOptional()
   @IsString()
   tag?: string;
+
+  /**
+   * #26 성인 등급 포함 여부 — 기본(미지정/false)은 일반(all)만 노출, 'true'면 성인 포함.
+   * 쿼리는 문자열이라 'true'/'false'로 받고 서비스에서 판정. 그 외 값은 거부(400).
+   */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  includeAdult?: string;
 }

@@ -15,11 +15,15 @@ export default function DiscoverPage() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [tag, setTag] = useState<string | undefined>(undefined);
+  const [includeAdult, setIncludeAdult] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [filtered, setFiltered] = useState(false);
 
   const load = useCallback(
-    async (q?: string, filters: { category?: string; tag?: string } = {}) => {
+    async (
+      q?: string,
+      filters: { category?: string; tag?: string; includeAdult?: boolean } = {},
+    ) => {
       const list = await fetchPublicCharacters(q, filters);
       setCharacters(list);
       setFiltered(Boolean(q?.trim() || filters.category || filters.tag));
@@ -34,24 +38,28 @@ export default function DiscoverPage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    void load(query, { category, tag });
+    void load(query, { category, tag, includeAdult });
   };
 
   const filterByCategory = (c: string) => {
     setCategory(c);
-    void load(query, { category: c, tag });
+    void load(query, { category: c, tag, includeAdult });
   };
   const filterByTag = (t: string) => {
     setTag(t);
-    void load(query, { category, tag: t });
+    void load(query, { category, tag: t, includeAdult });
   };
   const clearCategory = () => {
     setCategory(undefined);
-    void load(query, { category: undefined, tag });
+    void load(query, { category: undefined, tag, includeAdult });
   };
   const clearTag = () => {
     setTag(undefined);
-    void load(query, { category, tag: undefined });
+    void load(query, { category, tag: undefined, includeAdult });
+  };
+  const toggleAdult = (next: boolean) => {
+    setIncludeAdult(next);
+    void load(query, { category, tag, includeAdult: next });
   };
 
   return (
@@ -78,6 +86,15 @@ export default function DiscoverPage() {
           검색
         </button>
       </form>
+
+      <label className="mb-4 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <input
+          type="checkbox"
+          checked={includeAdult}
+          onChange={(e) => toggleAdult(e.target.checked)}
+        />
+        성인 콘텐츠 포함
+      </label>
 
       {(category || tag) && (
         <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
@@ -121,8 +138,13 @@ export default function DiscoverPage() {
                 <span className="text-base font-semibold">{c.name}</span>
                 <span className="text-sm text-zinc-500 dark:text-zinc-400">{c.tagline}</span>
               </Link>
-              {(c.category || (c.tags && c.tags.length > 0)) && (
+              {(c.category || c.contentRating === 'adult' || (c.tags && c.tags.length > 0)) && (
                 <div className="flex flex-wrap gap-1.5">
+                  {c.contentRating === 'adult' && (
+                    <span className="rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                      19
+                    </span>
+                  )}
                   {c.category && (
                     <button
                       type="button"

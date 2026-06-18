@@ -39,7 +39,15 @@ export interface Persona {
   category?: string;
   /** #25 태그(다중) — 발견 필터용 메타데이터. 프롬프트 미주입. 미지정/빈 배열 허용 */
   tags?: string[];
+  /**
+   * #26 콘텐츠 등급 — 성인/일반 분리. 미지정은 'all'(일반)로 취급한다.
+   * 공개 발견 기본값은 일반만 노출이며 성인은 명시 opt-in으로만 노출(안전 기본값).
+   */
+  contentRating?: ContentRating;
 }
+
+/** #26 콘텐츠 등급 — 'all'(일반) | 'adult'(성인). 공개목록 필터·폼 플래그의 단일 출처 */
+export type ContentRating = 'all' | 'adult';
 
 export { PERSONA_TEMPLATES } from './personas';
 export { buildPersonaPrompt, type PersonaPrompt } from './persona-prompt';
