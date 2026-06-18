@@ -38,12 +38,22 @@ export class CharactersService {
     });
   }
 
-  /** 공개 캐릭터 목록(최신순) */
-  async listPublic() {
-    return this.prisma.character.findMany({
-      where: { isPublic: true },
-      orderBy: { updatedAt: 'desc' },
-    });
+  /**
+   * 공개 캐릭터 목록(최신순). #24 q가 있으면 이름/한줄소개에 대소문자 무시 contains 검색.
+   * 비공개는 q 유무와 무관하게 항상 제외(isPublic:true 고정).
+   */
+  async listPublic(q?: string) {
+    const keyword = q?.trim();
+    const where: Prisma.CharacterWhereInput = keyword
+      ? {
+          isPublic: true,
+          OR: [
+            { name: { contains: keyword, mode: 'insensitive' } },
+            { tagline: { contains: keyword, mode: 'insensitive' } },
+          ],
+        }
+      : { isPublic: true };
+    return this.prisma.character.findMany({ where, orderBy: { updatedAt: 'desc' } });
   }
 
   /** 단건. 소유자거나 공개면 반환, 아니면 404(비공개 타인 것은 존재 비노출) */

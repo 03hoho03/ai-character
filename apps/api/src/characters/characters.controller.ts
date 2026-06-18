@@ -14,6 +14,7 @@ import { CharactersService } from './characters.service';
 import {
   BrowserIdQueryDto,
   CreateCharacterDto,
+  PublicSearchQueryDto,
   UpdateCharacterDto,
 } from './dto/character.dto';
 
@@ -38,10 +39,10 @@ export class CharactersController {
     return this.characters.getOwned(query.browserId);
   }
 
-  /** 공개 캐릭터 목록(최신순) */
+  /** 공개 캐릭터 목록(최신순). #24 q 있으면 이름/한줄소개 검색 */
   @Get('public')
-  listPublic() {
-    return this.characters.listPublic();
+  listPublic(@Query() query: PublicSearchQueryDto) {
+    return this.characters.listPublic(query.q);
   }
 
   /** 단건. 소유자거나 isPublic이면 200, 아니면 404 */

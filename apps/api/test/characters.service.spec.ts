@@ -89,7 +89,7 @@ describe('CharactersService', () => {
   });
 
   describe('listPublic', () => {
-    it('isPublic=true 캐릭터만 updatedAt desc로 조회한다', async () => {
+    it('isPublic=true 캐릭터만 updatedAt desc로 조회한다 (q 없음)', async () => {
       const list = [{ id: 'usr-pub' }];
       character.findMany.mockResolvedValue(list);
 
@@ -100,6 +100,43 @@ describe('CharactersService', () => {
         where: { isPublic: true },
         orderBy: { updatedAt: 'desc' },
       });
+    });
+
+    it('#24 q가 있으면 isPublic + name/tagline contains(대소문자 무시) OR로 조회한다', async () => {
+      character.findMany.mockResolvedValue([]);
+
+      await service.listPublic('마법');
+
+      expect(character.findMany).toHaveBeenCalledWith({
+        where: {
+          isPublic: true,
+          OR: [
+            { name: { contains: '마법', mode: 'insensitive' } },
+            { tagline: { contains: '마법', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+    });
+
+    it('#24 q가 공백/빈 문자열이면 필터 없이 전체 공개 목록으로 처리한다', async () => {
+      character.findMany.mockResolvedValue([]);
+
+      await service.listPublic('   ');
+
+      expect(character.findMany).toHaveBeenCalledWith({
+        where: { isPublic: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+    });
+
+    it('#24 비공개는 q 검색에서도 항상 제외(where에 isPublic:true 고정)', async () => {
+      character.findMany.mockResolvedValue([]);
+
+      await service.listPublic('아무거나');
+
+      const arg = character.findMany.mock.calls[0][0];
+      expect(arg.where.isPublic).toBe(true);
     });
   });
 

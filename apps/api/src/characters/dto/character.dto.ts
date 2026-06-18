@@ -121,3 +121,10 @@ export class BrowserIdQueryDto {
   @IsNotEmpty()
   browserId!: string;
 }
+
+/** #24 GET /characters/public 검색 쿼리 — q는 선택. 배열 등 비문자열은 거부(400) */
+export class PublicSearchQueryDto {
+  @IsOptional()
+  @IsString()
+  q?: string;
+}

@@ -6,7 +6,12 @@ import { UserCharacterList } from './user-character-list';
 export default function Home() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 font-sans">
-      <h1 className="mb-8 text-3xl font-bold">AI 캐릭터 챗</h1>
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-3xl font-bold">AI 캐릭터 챗</h1>
+        <Link href="/discover" className="text-sm font-medium underline hover:text-zinc-600">
+          캐릭터 탐색
+        </Link>
+      </div>
       <UserCharacterList />
       <h2 className="mb-4 mt-10 text-xl font-semibold">템플릿에서 시작하기</h2>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

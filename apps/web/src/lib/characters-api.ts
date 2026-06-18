@@ -20,6 +20,21 @@ export async function fetchOwnedCharacters(browserId: string): Promise<Character
   }
 }
 
+/** #24 공개 캐릭터 목록/검색(최신순). q 있으면 ?q=로 이름·한줄소개 검색. 실패면 빈 배열 */
+export async function fetchPublicCharacters(q?: string): Promise<CharacterRecord[]> {
+  const keyword = q?.trim();
+  const url = keyword
+    ? `${API_URL}/characters/public?${new URLSearchParams({ q: keyword }).toString()}`
+    : `${API_URL}/characters/public`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return (await res.json()) as CharacterRecord[];
+  } catch {
+    return [];
+  }
+}
+
 /** 캐릭터 생성(같은 id면 서버에서 소유자 upsert). 이번 sprint는 비공개 고정 */
 export async function createCharacter(
   persona: Persona,

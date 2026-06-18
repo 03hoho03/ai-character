@@ -7,6 +7,7 @@ import {
   createCharacter,
   deleteCharacter,
   fetchOwnedCharacters,
+  fetchPublicCharacters,
   updateCharacter,
 } from './characters-api';
 
@@ -121,6 +122,38 @@ describe('characters-api (#21)', () => {
     it('non-ok면 throw', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nf' }, 404));
       await expect(deleteCharacter('usr-1', 'b1')).rejects.toThrow();
+    });
+  });
+
+  // #24 공개 캐릭터 검색
+  describe('fetchPublicCharacters', () => {
+    it('q 없으면 GET /characters/public 으로 호출하고 배열을 반환한다', async () => {
+      const list = [persona()];
+      fetchMock.mockResolvedValueOnce(jsonResponse(list));
+
+      const result = await fetchPublicCharacters();
+
+      expect(result).toEqual(list);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/characters/public`);
+      expect((init as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+    });
+
+    it('q가 있으면 ?q= 쿼리를 동반해 GET한다', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+      await fetchPublicCharacters('마법');
+
+      const [url] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/characters/public?q=${encodeURIComponent('마법')}`);
+    });
+
+    it('실패/네트워크 에러면 빈 배열(best-effort)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
+      expect(await fetchPublicCharacters('x')).toEqual([]);
+
+      fetchMock.mockRejectedValueOnce(new Error('network'));
+      expect(await fetchPublicCharacters()).toEqual([]);
     });
   });
 });
