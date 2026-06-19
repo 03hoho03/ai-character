@@ -25,10 +25,11 @@ export class ChatRequestDto implements ChatRequest {
   @IsNotEmpty()
   personaId!: string;
 
-  /** #23 usr-* 소유 확인용 익명 browserId */
+  /** #23/#32 usr-* 소유 확인용 익명 browserId(비로그인 폴백). 로그인이면 쿠키 userId 우선 → optional */
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsArray()
   @ArrayNotEmpty()

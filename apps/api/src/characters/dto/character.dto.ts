@@ -35,9 +35,11 @@ export class CreateCharacterDto implements CreateCharacterRequest {
   @IsNotEmpty()
   id!: string;
 
+  // #32 비로그인 폴백 소유 식별자. 로그인이면 쿠키 userId가 우선하므로 optional.
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -88,9 +90,11 @@ export class CreateCharacterDto implements CreateCharacterRequest {
 
 /** PATCH /characters/:id 본문 — 소유자 인증 + 부분 갱신. id는 경로에서 받는다 */
 export class UpdateCharacterDto implements UpdateCharacterRequest {
+  // #32 비로그인 폴백 소유 식별자(로그인이면 쿠키 userId 우선)
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsOptional()
   @IsString()
@@ -146,11 +150,13 @@ export class UpdateCharacterDto implements UpdateCharacterRequest {
   isPublic?: boolean;
 }
 
-/** browserId를 쿼리로 받는 읽기/삭제용 — GET /characters, GET/DELETE /characters/:id */
+/** browserId를 쿼리로 받는 읽기/삭제용 — GET /characters, GET/DELETE /characters/:id.
+ *  #32 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자). */
 export class BrowserIdQueryDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 }
 
 /**

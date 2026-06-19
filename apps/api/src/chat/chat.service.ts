@@ -21,6 +21,7 @@ import {
   type Persona,
 } from '@ai-character/shared';
 import { CharactersService } from '../characters/characters.service';
+import type { OwnerContext } from '../auth/owner';
 import { GENAI_CLIENT, SAFETY_SETTINGS } from './chat.constants';
 
 const GEMINI_TIMEOUT_MS = 30_000;
@@ -35,9 +36,9 @@ export class ChatService {
     private readonly characters: CharactersService,
   ) {}
 
-  async chat(request: ChatRequest): Promise<ChatResponse> {
+  async chat(request: ChatRequest, owner: OwnerContext): Promise<ChatResponse> {
     // #23 신뢰 소스에서 persona 재조립 — requireClient보다 먼저 해결해 미존재는 404가 503보다 앞선다
-    const persona = await this.resolvePersona(request.personaId, request.browserId);
+    const persona = await this.resolvePersona(request.personaId, owner);
     const prompt = buildPersonaPrompt(persona);
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
@@ -77,10 +78,11 @@ export class ChatService {
    */
   async chatStream(
     request: ChatRequest,
+    owner: OwnerContext,
     signal?: AbortSignal,
   ): Promise<AsyncGenerator<ChatStreamEvent>> {
     // #23 신뢰 소스에서 persona 재조립 (404가 503보다 앞서도록 requireClient 이전 해결)
-    const persona = await this.resolvePersona(request.personaId, request.browserId);
+    const persona = await this.resolvePersona(request.personaId, owner);
     const prompt = buildPersonaPrompt(persona);
     const client = this.requireClient();
     const model = this.config.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
@@ -146,13 +148,13 @@ export class ChatService {
    * #23 personaId를 신뢰 소스에서 해결한다 — 클라가 보낸 어떤 instruction도 신뢰하지 않는다.
    * `tpl-*`는 shared 템플릿, 그 외(`usr-*`)는 Character DB(소유자거나 공개면 반환, 아니면 404).
    */
-  private async resolvePersona(personaId: string, browserId: string): Promise<Persona> {
+  private async resolvePersona(personaId: string, owner: OwnerContext): Promise<Persona> {
     if (personaId.startsWith('tpl-')) {
       const template = PERSONA_TEMPLATES.find((p) => p.id === personaId);
       if (!template) throw new NotFoundException('캐릭터를 찾을 수 없습니다.');
       return template;
     }
-    const character = await this.characters.getOne(personaId, browserId);
+    const character = await this.characters.getOne(personaId, owner);
     return this.toPersona(character);
   }
 

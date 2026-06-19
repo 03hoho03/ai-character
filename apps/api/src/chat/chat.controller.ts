@@ -1,8 +1,23 @@
-import { Body, Controller, HttpCode, HttpStatus, Logger, Post, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { serializeChatStreamEvent, type ChatResponse } from '@ai-character/shared';
 import { ChatService } from './chat.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
+import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
+import { resolveOwner } from '../auth/owner';
+
+/** 쿠키 JWT가 OptionalJwtGuard로 주입하는 요청 신원 */
+type OwnedRequest = Request & { user?: { userId: string } };
 
 /**
  * chat 엔드포인트 — 비스트리밍(#2a) + SSE 스트리밍(#12).
@@ -18,8 +33,9 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post()
-  chat(@Body() body: ChatRequestDto): Promise<ChatResponse> {
-    return this.chatService.chat(body);
+  @UseGuards(OptionalJwtGuard)
+  chat(@Body() body: ChatRequestDto, @Req() req: OwnedRequest): Promise<ChatResponse> {
+    return this.chatService.chat(body, resolveOwner(req, body.browserId));
   }
 
   /**
@@ -29,12 +45,17 @@ export class ChatController {
    */
   @Post('stream')
   @HttpCode(HttpStatus.OK)
-  async chatStream(@Body() body: ChatRequestDto, @Res() res: Response): Promise<void> {
+  @UseGuards(OptionalJwtGuard)
+  async chatStream(
+    @Body() body: ChatRequestDto,
+    @Res() res: Response,
+    @Req() req: OwnedRequest,
+  ): Promise<void> {
     const abort = new AbortController();
     res.once('close', () => abort.abort());
 
     // generator 생성 전 예외(503 등)는 SSE 헤더 송출 전이라 일반 HTTP 에러로 전달된다
-    const events = await this.chatService.chatStream(body, abort.signal);
+    const events = await this.chatService.chatStream(body, resolveOwner(req, body.browserId), abort.signal);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');

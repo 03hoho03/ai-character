@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { CharactersModule } from '../characters/characters.module';
+import { AuthModule } from '../auth/auth.module';
 import { GENAI_CLIENT } from './chat.constants';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 
 @Module({
-  imports: [CharactersModule], // #23 신뢰 persona 조회용 CharactersService 주입
+  imports: [CharactersModule, AuthModule], // #23 persona 조회 + #32 OptionalJwtGuard
   controllers: [ChatController],
   providers: [
     ChatService,

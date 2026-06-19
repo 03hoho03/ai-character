@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { OptionalJwtGuard } from './optional-jwt.guard';
 
 /**
  * #28 인증 모듈. JWT 서명키는 JWT_SECRET env에서 런타임에 읽는다(registerAsync —
@@ -19,6 +20,8 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, OptionalJwtGuard],
+  // #32 소유 경로(characters/chat)가 OptionalJwtGuard를 쓰도록 export(JwtModule도 함께 노출)
+  exports: [OptionalJwtGuard, JwtModule],
 })
 export class AuthModule {}

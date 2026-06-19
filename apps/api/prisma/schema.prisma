@@ -56,7 +56,8 @@ model Message {
 // 구조화 필드(exampleDialogue/prohibitions)는 Json — Persona 형태를 그대로 보존(정규화 이득 없음).
 model Character {
   id              String   @id // 클라이언트 제공 usr-<uuid>
-  browserId       String
+  // #32 OwnerContext 전환: 로그인 캐릭터는 userId 소유(browserId 없음) → nullable. 비로그인은 browserId 소유.
+  browserId       String?
   name            String
   tagline         String
   personality     String

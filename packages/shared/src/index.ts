@@ -80,8 +80,8 @@ export interface ChatRequest {
    * 클라가 instruction을 직접 전송하던 통로를 제거 — `tpl-*`는 템플릿, 그 외는 Character DB.
    */
   personaId: string;
-  /** #23 usr-* 비공개 캐릭터 소유 확인용 익명 browserId */
-  browserId: string;
+  /** #23/#32 usr-* 비공개 캐릭터 소유 확인용 익명 browserId(비로그인 폴백). 로그인이면 쿠키 userId 우선 → optional */
+  browserId?: string;
   messages: ChatMessage[];
   /** #15 과거 대화 요약 — 서버가 systemInstruction에 접합해 장기기억으로 주입 */
   conversationSummary?: string;
@@ -143,9 +143,9 @@ export interface CreateConversationRequest {
  * 날짜는 JSON 직렬화 형태(ISO 문자열) 기준.
  */
 export interface CharacterRecord extends Persona {
-  /** 소유자 = 익명 browserId */
-  browserId: string;
-  /** #31 계정 소유(nullable, browserId 병행). 소유검증 전환은 #32 — 선납으로 파급 완화 */
+  /** 소유자 = 익명 browserId. #32 로그인 캐릭터는 userId 소유라 browserId가 null일 수 있다 */
+  browserId?: string | null;
+  /** #31/#32 계정 소유(nullable, browserId 병행) */
   userId?: string | null;
   /** 공개 목록/탐색 노출 여부 (#16: 목록+상세 조회까지, 타 사용자 채팅은 #19) */
   isPublic: boolean;
@@ -153,15 +153,16 @@ export interface CharacterRecord extends Persona {
   updatedAt: string;
 }
 
-/** POST /characters 요청 — Persona(id 포함) + 소유자 + 공개 여부. 같은 id 재요청은 소유자면 upsert */
+/** POST /characters 요청 — Persona(id 포함) + 소유자 + 공개 여부. 같은 id 재요청은 소유자면 upsert.
+ *  #32 browserId는 비로그인 폴백 소유 식별자(로그인이면 쿠키 userId 우선) → optional. */
 export interface CreateCharacterRequest extends Persona {
-  browserId: string;
+  browserId?: string;
   isPublic?: boolean;
 }
 
-/** PATCH /characters/:id 요청 — 소유자 인증(browserId) + 부분 갱신 필드. id는 경로에서 받는다 */
+/** PATCH /characters/:id 요청 — 부분 갱신 필드. id는 경로에서 받는다. #32 browserId optional(비로그인 폴백) */
 export interface UpdateCharacterRequest extends Partial<Omit<Persona, 'id'>> {
-  browserId: string;
+  browserId?: string;
   isPublic?: boolean;
 }
 
