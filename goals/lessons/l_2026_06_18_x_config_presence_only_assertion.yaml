@@ -2,7 +2,7 @@ lesson_id: l_2026_06_18_x_config_presence_only_assertion
 category: verifier_weakness
 title: "보안/설정 상수 테스트가 존재(Array.isArray+length)만 단언 — 내용(카테고리/threshold) 회귀를 못 잡음"
 created_at: "2026-06-18"
-updated_at: "2026-06-18"
+updated_at: "2026-06-19"
 
 sources:
   - run_id: dev-cycle/2026_06_18_server-side-safety-enforcement (비정식 — verify_report 기반 회고)
@@ -13,7 +13,23 @@ sources:
       (허위 GREEN 위험은 낮으나 회귀 감지력 부족).
     observed_at: "2026-06-18"
 
-n_cycles: 1
+# === 완화 준수(긍정) + 자가교정 반복 — 약점 *발생*이 아니라 완화책 작동 증거. n_cycles에 미가산 ===
+mitigation_observed:
+  - run_id: dev-cycle/2026_06_18_auth-backend (#28)
+    file_ref: "dev-cycle/2026_06_18_auth-backend/verify_report.md#성공 기준"
+    note: |
+      보안 상수(쿠키 httpOnly/sameSite/maxAge)를 *값으로* 단언, argon2를 $argon2 포맷 + verify
+      왕복으로 내용 단언(존재-only 아님). + verifier가 PASS 중 '만료 토큰 테스트 부재(위조만 커버)'
+      커버리지 갭을 in-cycle 적발 → JwtService 만료 토큰 테스트로 보강(자가교정 2번째, #23에 이어).
+    observed_at: "2026-06-18"
+  - run_id: dev-cycle/2026_06_19_owner-context (#32)
+    file_ref: "dev-cycle/2026_06_19_owner-context/verify_report.md#성공 기준"
+    note: |
+      userId 위조 차단을 data.userId===undefined 로 *내용* 단언(존재 확인 아님). verifier가
+      weak_check 여부를 능동 점검해 '내용 단언 맞음'을 확인. trigger(보안/정책 상수 테스트)는
+      반복됐으나 symptom(존재-only 단언) 미발생.
+
+n_cycles: 1   # 약점 *발생*은 #23 단발. #28/#32는 완화 준수(긍정)라 미가산.
 
 pattern:
   trigger: "보안/정책 성격의 구조화 상수(safetySettings, 권한 매트릭스, 등급 플래그 등)를 테스트할 때, 그 값이 '전달됐는지'만 확인"
@@ -24,8 +40,12 @@ seed_taxonomy_match: weak_check
 
 confidence: tentative
 confidence_reason: |
-  n=1 (#23 safetySettings 단발). 동일 verifier가 같은 세션에서 적발·강화해 실제 누출은 없었음.
-  config-content 단언 약점이 다른 ticket(#26 등급 플래그 등)에서 한 번 더 반복되면 weak 승급.
+  약점 *발생* n=1 (#23 safetySettings 단발) 유지. 이후 #26(contentRating)·#28(쿠키/argon2)·#32
+  (위조 무시)에서 trigger(보안·정책 구조화 상수 테스트)가 반복됐으나 symptom(존재-only 단언)은
+  미발생 — CLAUDE.md '내용 단언' 규약(완화책)이 작동. 이는 패턴 반박(disconfirm)이 아니라 완화 정착
+  (선례: y_endpoint_http_test_gap의 완화 긍정 증거 처리와 동일). 약점이 *재발*해야 n 가산.
+  부수 관측: verifier 자가교정(PASS 중 갭 in-cycle 적발·보강)이 #23·#28에서 2회 — verifier 강점
+  패턴이나 약점 카테고리(X)에 자리 없어 별도 lesson화 보류, INDEX Meta에 긍정 관찰로 기록.
 
 counter_evidence: []
 

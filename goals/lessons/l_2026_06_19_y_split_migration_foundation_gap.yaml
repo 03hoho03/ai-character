@@ -1,0 +1,73 @@
+lesson_id: l_2026_06_19_y_split_migration_foundation_gap
+category: define_weakness
+title: "스키마를 토대+전환 두 dev-cycle로 분할 시, 토대 티켓이 후속 전환의 컬럼 제약을 미예견 — 후속에서 추가 마이그레이션"
+created_at: "2026-06-19"
+updated_at: "2026-06-19"
+
+# === Sources ===
+sources:
+  - run_id: dev-cycle/2026_06_19_owner-context (비정식 — verify_report 기반 회고, #32)
+    file_ref: "dev-cycle/2026_06_19_owner-context/verify_report.md#구현 중 발견 (PRD 보강)"
+    quote: |
+      Character.browserId가 String(NOT NULL)이라 로그인 사용자가 browserId 없이 userId만으로
+      생성 불가 → 타입 에러(TS2322)로 드러남. #31이 userId만 nullable화하고 browserId는
+      required로 남긴 누락. #32에 browserId nullable 마이그레이션(20260619072947, DROP NOT NULL)
+      추가 — OwnerContext 전환의 필수 전제.
+    observed_at: "2026-06-19"
+  - run_id: dev-cycle/2026_06_18_ownership-schema (비정식 — prd 기반, #31)
+    file_ref: "dev-cycle/2026_06_18_ownership-schema/prd.md#요구사항"
+    quote: |
+      #31 토대 티켓: "Character/Conversation에 nullable userId + User FK + 마이그레이션(컬럼 추가만)".
+      browserId 제약(NOT NULL)에 대한 언급 없음 — 후속 #32가 로그인 소유(browserId 부재)를
+      요구한다는 점을 토대 PRD가 명세하지 않음.
+    observed_at: "2026-06-18"
+
+n_cycles: 1   # 약점 발생은 #31→#32 단발. (source 2건은 동일 1회 사건의 토대/전환 양면)
+
+# === Pattern ===
+pattern:
+  trigger: "스키마 변경을 '토대(컬럼/FK 추가)' + '전환(소유검증/로직)' 두 dev-cycle로 분할할 때, 토대 티켓 PRD가 '이번에 추가할 컬럼'만 보고 후속 전환 티켓이 요구할 제약(NOT NULL 완화·unique 방향·FK 동작)은 명세하지 않음."
+  symptom: "#31이 userId nullable만 추가하고 browserId는 required로 남김 → #32 OwnerContext 전환에서 '로그인 사용자가 browserId 없이 생성 불가' TS2322로 드러나, 토대였어야 할 browserId DROP NOT NULL 마이그레이션을 전환 티켓(#32)에 추가."
+  failure_mode: "한 번에 끝낼 스키마 제약 변경이 2개 마이그레이션으로 분산. 토대 티켓의 '회귀 0 / 완료' 판정이 후속 요구를 못 본 채 close — 토대가 불완전. 후속 티켓 범위가 스키마+로직으로 부풀어 회귀면 증가."
+
+# === Seed Taxonomy 매칭 ===
+seed_taxonomy_match: ""   # 기존 3종 미매칭. 새 코드 후보: foundation_constraint_blindness
+
+confidence: tentative
+confidence_reason: |
+  n=1 (스키마 분할 단발). evidence는 #32 구현 중 타입에러(객관적 컴파일 실패)지만 verify_report
+  self-report 성격이라 강제 강등 규칙 1에 근접 — tentative 유지가 매트릭스상 적절.
+  다음 분할 마이그레이션(예: #34 유니크키 전환)에서 같은 trigger+symptom 재발 시 weak 승급.
+
+counter_evidence: []
+
+# === Proposed Patch ===
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    스키마를 '토대 + 전환'으로 분할할 때, 토대 티켓 PRD에 "후속 전환 티켓이 요구할 제약" 점검을
+    포함: 추가하는 컬럼만이 아니라 *기존 컬럼의 제약 방향*(예: 다른 소유 식별자가 nullable이어야
+    하는가, unique 키가 어디로 옮겨가는가)을 토대 단계에서 답한다. "이 스키마 위에서 다음 티켓이
+    추가 마이그레이션 없이 진행되는가"를 토대 verify의 자문 항목으로.
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 dev-cycle: 스키마를 분할할 때 토대 PRD에 '후속 티켓이 요구할 제약(NOT NULL 완화/unique 방향/FK)' 섹션을 넣고 점검"
+  - "토대 마이그레이션 verify: '이 스키마로 다음 전환 티켓이 막힘없이 진행되나' 자문 — 막히면 토대 범위에 포함"
+  - "특히 #34(유니크키 (browserId,personaId)→(userId,personaId) 전환)에서 동일 함정 재발 추적"
+
+remaining_ambiguity:
+  - "토대 티켓에서 후속 제약을 어디까지 선반영할지 — 과하면 YAGNI(미사용 nullable 컬럼). 이번 browserId nullable은 후속에 명백히 필요했던 케이스라 선반영이 옳았으나, 일반화 시 '명백히 필요'의 경계가 모호."
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    verify와 같은 세션(#32 verify_report를 같은 세션 learn이 패턴화). 독립 세션 재검 시 신뢰 상승.
+    단 근거가 TS2322 컴파일 실패라는 객관 사실이라 self-report 편향은 제한적.
