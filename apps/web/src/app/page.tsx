@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { PERSONA_TEMPLATES } from '@ai-character/shared';
 import { UserCharacterList } from './user-character-list';
+import { SessionStatus } from './session-status';
 
 // #7 캐릭터 목록 홈 — 카드 그리드 + 새 캐릭터 진입점(#6)
 export default function Home() {
@@ -8,9 +9,12 @@ export default function Home() {
     <main className="mx-auto max-w-4xl px-4 py-10 font-sans">
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-3xl font-bold">AI 캐릭터 챗</h1>
-        <Link href="/discover" className="text-sm font-medium underline hover:text-zinc-600">
-          캐릭터 탐색
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/discover" className="text-sm font-medium underline hover:text-zinc-600">
+            캐릭터 탐색
+          </Link>
+          <SessionStatus />
+        </div>
       </div>
       <UserCharacterList />
       <h2 className="mb-4 mt-10 text-xl font-semibold">템플릿에서 시작하기</h2>
