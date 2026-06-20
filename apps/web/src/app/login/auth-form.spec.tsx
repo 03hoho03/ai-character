@@ -18,6 +18,7 @@ vi.mock('../../lib/auth-api', () => ({
   signup: vi.fn(),
   logout: vi.fn(),
 }));
+vi.mock('../../lib/character-store', () => ({ reloadUserCharacters: vi.fn() }));
 
 import * as authApi from '../../lib/auth-api';
 import { SessionProvider } from '../../lib/session-context';

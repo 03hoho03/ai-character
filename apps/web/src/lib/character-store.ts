@@ -72,6 +72,16 @@ export function ensureLoaded(): Promise<void> {
   return loadPromise;
 }
 
+/**
+ * #36 세션 전환(로그인/로그아웃) 시 캐시 무효화 + 재로드.
+ * 소유 식별자가 바뀌면(쿠키 userId ↔ 익명 browserId) '내 캐릭터' 집합이 달라지므로,
+ * load-once 가드를 풀고 새 자격으로 다시 가져와 통지한다(stale 계정 데이터 방지).
+ */
+export function reloadUserCharacters(): Promise<void> {
+  loadPromise = null;
+  return ensureLoaded();
+}
+
 /** useSyncExternalStore 구독 — 최초 구독 시 서버 로드를 트리거 */
 export function subscribeUserCharacters(listener: () => void): () => void {
   listeners.add(listener);

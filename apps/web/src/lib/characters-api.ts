@@ -3,6 +3,10 @@
 /**
  * #21 캐릭터 API 클라이언트 — #16 백엔드 Character CRUD에 대응(conversations-api 패턴).
  * 읽기는 best-effort(실패 시 빈 목록), 쓰기는 실패를 throw로 전파한다.
+ *
+ * #36 소유 경로는 credentials:'include'로 httpOnly JWT 쿠키를 운반한다.
+ * 서버 OwnerContext(#32)가 쿠키 userId를 우선하고, 없으면 함께 보낸 browserId로 폴백한다
+ * (로그인=계정 소유 / 비로그인=익명 browserId). 공개 목록(fetchPublicCharacters)은 소유 무관이라 제외.
  */
 import type { CharacterRecord, Persona } from '@ai-character/shared';
 
@@ -12,7 +16,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 export async function fetchOwnedCharacters(browserId: string): Promise<CharacterRecord[]> {
   const qs = new URLSearchParams({ browserId }).toString();
   try {
-    const res = await fetch(`${API_URL}/characters?${qs}`);
+    const res = await fetch(`${API_URL}/characters?${qs}`, { credentials: 'include' });
     if (!res.ok) return [];
     return (await res.json()) as CharacterRecord[];
   } catch {
@@ -54,6 +58,7 @@ export async function createCharacter(
 ): Promise<CharacterRecord> {
   const res = await fetch(`${API_URL}/characters`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...persona, browserId, isPublic: false }),
   });
@@ -69,6 +74,7 @@ export async function updateCharacter(
 ): Promise<CharacterRecord> {
   const res = await fetch(`${API_URL}/characters/${id}`, {
     method: 'PATCH',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...patch, browserId }),
   });
@@ -79,6 +85,9 @@ export async function updateCharacter(
 /** 캐릭터 삭제(소유자만) */
 export async function deleteCharacter(id: string, browserId: string): Promise<void> {
   const qs = new URLSearchParams({ browserId }).toString();
-  const res = await fetch(`${API_URL}/characters/${id}?${qs}`, { method: 'DELETE' });
+  const res = await fetch(`${API_URL}/characters/${id}?${qs}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error(`deleteCharacter failed: ${res.status}`);
 }

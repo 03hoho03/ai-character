@@ -92,6 +92,7 @@ describe('useChatStream (#3)', () => {
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe('http://localhost:4000/chat/stream');
+    expect((init as RequestInit).credentials).toBe('include'); // #36 쿠키 운반(로그인 비공개 캐릭터 채팅)
     const body = JSON.parse((init as RequestInit).body as string);
     // 서버가 신뢰 소스에서 재조립 — 클라는 식별자만 보낸다
     expect(body.personaId).toBe(persona.id);

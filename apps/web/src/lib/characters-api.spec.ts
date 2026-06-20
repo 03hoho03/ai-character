@@ -194,4 +194,31 @@ describe('characters-api (#21)', () => {
       expect(await fetchPublicCharacters()).toEqual([]);
     });
   });
+
+  // #36 소유 경로는 쿠키(세션 자격)를 운반, 공개 목록은 소유 무관이라 운반하지 않는다
+  describe('세션 자격 운반 (#36)', () => {
+    it('소유 경로(owned/create/update/delete)가 credentials:include로 fetch한다', async () => {
+      const p = persona();
+      const calls: Array<() => Promise<unknown>> = [
+        () => fetchOwnedCharacters('b1'),
+        () => createCharacter(p, 'b1'),
+        () => updateCharacter('usr-1', { name: 'x' }, 'b1'),
+        () => deleteCharacter('usr-1', 'b1'),
+      ];
+      for (const call of calls) {
+        fetchMock.mockReset();
+        fetchMock.mockResolvedValueOnce(jsonResponse(p));
+        await call();
+        const init = fetchMock.mock.calls[0][1] as RequestInit;
+        expect(init.credentials).toBe('include');
+      }
+    });
+
+    it('공개 목록(fetchPublicCharacters)은 credentials를 운반하지 않는다(소유 무관 경계)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      await fetchPublicCharacters();
+      const init = fetchMock.mock.calls[0][1] as RequestInit | undefined;
+      expect(init?.credentials).toBeUndefined();
+    });
+  });
 });

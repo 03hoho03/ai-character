@@ -13,11 +13,14 @@ vi.mock('./auth-api', () => ({
   signup: vi.fn(),
   logout: vi.fn(),
 }));
+vi.mock('./character-store', () => ({ reloadUserCharacters: vi.fn() }));
 
 import * as authApi from './auth-api';
+import { reloadUserCharacters } from './character-store';
 import { SessionProvider, useSession } from './session-context';
 
 const mocked = vi.mocked(authApi);
+const reloadMock = vi.mocked(reloadUserCharacters);
 const wrapper = ({ children }: { children: ReactNode }) => (
   <SessionProvider>{children}</SessionProvider>
 );
@@ -28,6 +31,7 @@ describe('SessionProvider / useSession (#35)', () => {
     mocked.login.mockReset();
     mocked.signup.mockReset();
     mocked.logout.mockReset();
+    reloadMock.mockReset();
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -63,6 +67,7 @@ describe('SessionProvider / useSession (#35)', () => {
     expect(mocked.login).toHaveBeenCalledWith('a@b.com', 'password123');
     expect(result.current.status).toBe('authenticated');
     expect(result.current.user).toEqual({ id: 'u1', email: 'a@b.com' });
+    expect(reloadMock).toHaveBeenCalled(); // #36 새 계정 자격으로 캐릭터 재로드
   });
 
   it('logout 시 user 제거 + anonymous 전이', async () => {
@@ -78,6 +83,7 @@ describe('SessionProvider / useSession (#35)', () => {
 
     expect(result.current.status).toBe('anonymous');
     expect(result.current.user).toBeNull();
+    expect(reloadMock).toHaveBeenCalled(); // 익명 자격으로 되돌려 재로드
   });
 
   it('Provider 밖에서 useSession 호출 시 throw', () => {

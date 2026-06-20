@@ -135,8 +135,10 @@ export function useChatStream(persona: Persona, persistence?: ChatPersistence) {
 
       try {
         // #23 클라는 personaId/browserId만 전송 — 서버가 신뢰 소스에서 프롬프트(systemInstruction/few-shot) 재조립
+        // #36 credentials:'include'로 쿠키 운반 — 로그인 사용자는 비공개 캐릭터 채팅 시 userId 소유로 persona 조회됨
         const res = await fetch(`${API_URL}/chat/stream`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             personaId: persona.id,

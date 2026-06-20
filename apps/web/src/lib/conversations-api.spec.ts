@@ -141,4 +141,24 @@ describe('conversations-api (#14)', () => {
       expect(await summarizeConversation('c1', 'b1')).toEqual({ summary: null, summarizedCount: 0 });
     });
   });
+
+  // #36 모든 소유 경로가 httpOnly 쿠키(세션 자격)를 운반 — 로그인 사용자 계정 소유 승격 선납
+  describe('세션 자격 운반 (#36)', () => {
+    it('모든 conversations 호출이 credentials:include로 fetch한다', async () => {
+      const calls: Array<() => Promise<unknown>> = [
+        () => fetchConversation('b1', 'tpl-x'),
+        () => ensureConversation('b1', 'tpl-x'),
+        () => appendMessage('c1', 'b1', 'user', 'hi'),
+        () => replaceMessages('c1', 'b1', []),
+        () => summarizeConversation('c1', 'b1'),
+      ];
+      for (const call of calls) {
+        fetchMock.mockReset();
+        fetchMock.mockResolvedValueOnce(jsonResponse({}));
+        await call();
+        const init = fetchMock.mock.calls[0][1] as RequestInit;
+        expect(init.credentials).toBe('include');
+      }
+    });
+  });
 });

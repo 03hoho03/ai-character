@@ -3,6 +3,10 @@
 /**
  * #14 conversations API 클라이언트 — 백엔드(1/2) CRUD에 대응.
  * 복원(fetchConversation)은 best-effort: 실패/404면 null.
+ *
+ * #36 모든 호출에 credentials:'include'로 httpOnly JWT 쿠키를 운반한다(소유 경로).
+ * 현재 백엔드 conversations 소유는 browserId 기준(#34에서 userId 전환 예정)이라 쿠키는
+ * 아직 무시되지만, 전환 시 클라 재작업 없이 계정 소유로 승격되도록 선납한다(browserId 폴백 병행).
  */
 import type {
   ChatMessage,
@@ -20,7 +24,7 @@ export async function fetchConversation(
 ): Promise<ConversationWithMessages | null> {
   const qs = new URLSearchParams({ browserId, personaId }).toString();
   try {
-    const res = await fetch(`${API_URL}/conversations?${qs}`);
+    const res = await fetch(`${API_URL}/conversations?${qs}`, { credentials: 'include' });
     if (!res.ok) return null;
     return (await res.json()) as ConversationWithMessages;
   } catch {
@@ -35,6 +39,7 @@ export async function ensureConversation(
 ): Promise<ConversationRecord> {
   const res = await fetch(`${API_URL}/conversations`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ browserId, personaId }),
   });
@@ -51,6 +56,7 @@ export async function appendMessage(
 ): Promise<void> {
   const res = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ browserId, role, content }),
   });
@@ -68,6 +74,7 @@ export async function summarizeConversation(
   try {
     const res = await fetch(`${API_URL}/conversations/${conversationId}/summarize`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ browserId }),
     });
@@ -86,6 +93,7 @@ export async function replaceMessages(
 ): Promise<void> {
   const res = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
     method: 'PUT',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ browserId, messages }),
   });

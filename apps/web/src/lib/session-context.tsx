@@ -21,6 +21,7 @@ import {
   logout as apiLogout,
   signup as apiSignup,
 } from './auth-api';
+import { reloadUserCharacters } from './character-store';
 
 /** loading: 최초 me 조회 중 / authenticated: 로그인 / anonymous: 비로그인(폴백) */
 export type SessionStatus = 'loading' | 'authenticated' | 'anonymous';
@@ -56,18 +57,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const me = await apiLogin(email, password);
     setUser(me);
     setStatus('authenticated');
+    void reloadUserCharacters(); // #36 새 계정 자격으로 '내 캐릭터' 재로드
   }, []);
 
   const signup = useCallback(async (email: string, password: string) => {
     const me = await apiSignup(email, password);
     setUser(me);
     setStatus('authenticated');
+    void reloadUserCharacters();
   }, []);
 
   const logout = useCallback(async () => {
     await apiLogout();
     setUser(null);
     setStatus('anonymous');
+    void reloadUserCharacters(); // 익명 browserId 자격으로 되돌려 재로드
   }, []);
 
   const value = useMemo<SessionValue>(
