@@ -1,0 +1,76 @@
+lesson_id: l_2026_06_22_w_subagent_surrogate_serialization_break
+category: collab_antipattern
+title: "코드베이스를 읽는 병렬 sub-agent의 raw 텍스트 출력에 섞인 짝없는 surrogate 문자가, 결과를 합쳐 만든 다음 API 요청 본문을 깨뜨려 오케스트레이션 턴 전체를 중단"
+created_at: "2026-06-22"
+updated_at: "2026-06-22"
+
+# === Sources ===
+sources:
+  - run_id: sprint-pm/sp_2026_06_22_conv_ownership (Phase 3·4 — PM/Architect 병렬 평가)
+    file_ref: "이전 세션 트랜스크립트 f25b7b4b...jsonl line 964-965(Agent 병렬 호출) → line 989(에러)"
+    quote: |
+      Phase 3·4에서 PM agent와 Architect agent를 한 메시지로 병렬 호출(Agent ×2). PM은 정상 반환(line 967),
+      Architect는 코드베이스(schema/service 등)를 Read/Grep해 raw 텍스트 yaml을 반환. 두 결과를 합쳐
+      다음 모델 호출 본문을 직렬화할 때 짝없는(lone) surrogate 문자가 섞여:
+        "API Error: 400 The request body is not valid JSON: no low surrogate in string: line 1 column 450309"
+      턴 전체가 중단. gh issue create(#38/#39)는 이미 성공했고, 깨진 건 그 다음 모델 호출이라
+      "이슈는 생겼는데 plan은 미완"인 중간 유실 상태로 남음.
+    observed_at: "2026-06-22"
+
+n_cycles: 1
+
+# === Pattern ===
+pattern:
+  trigger: "메인(orchestrator)이 코드베이스를 Read/Grep해 raw 텍스트(코드 스니펫·주석 인용 포함)를 반환하는 sub-agent를 1개 이상 호출하고, 그 출력을 합쳐 다음 API 요청 본문으로 직렬화. 코드/주석에 이모지·장식기호 등 surrogate-pair 문자가 있거나 출력이 4바이트 문자 경계에서 잘리면 lone surrogate 발생."
+  symptom: "다음 모델 호출이 `API Error 400 ... no low surrogate in string: line 1 column N`으로 거부. sub-agent 자체는 성공 반환했는데도 그 결과를 *합치는* 단계에서 깨짐 → 어느 도구도 실패로 안 보이고 턴만 죽음."
+  failure_mode: "오케스트레이션 턴 전체 중단 + 중간 산출 유실(예: 이슈는 생성됐으나 milestone/plan 미완). 부분 성공한 sub-agent 결과(PM 평가)도 다음 호출이 죽어 활용 못 하고 날아갈 뻔함. 사용자에게는 '왜 멈췄는지' 불명확."
+
+# === Seed Taxonomy 매칭 ===
+seed_taxonomy_match: ""   # 기존 3종(silent_skip/weak_check/intent_drift) 미매칭. 새 코드 후보: subagent_output_serialization_break (병렬 sub-agent raw 출력의 인코딩이 합류 단계에서 요청을 깨뜨림). W의 기존 정의(자기봉합/self-pass)와는 다른 '오케스트레이션 도구 실패'축 — 카테고리 적합도는 약함, 후크 가치로 기록.
+
+confidence: tentative
+confidence_reason: |
+  n=1. 단 trigger(코드 읽는 sub-agent의 raw 텍스트 합류)·symptom(400 no low surrogate)·failure(턴 중단+중간유실)이
+  구체적이고 재현 메커니즘이 명확. sprint-pm/dev-cycle처럼 sub-agent를 병렬 호출하는 오케스트레이터 스킬에서 재발 가능.
+  동일 trigger 재발 시(또는 verify/code-review 다중 에이전트에서 동형 발생) weak/moderate 승급.
+
+counter_evidence: []
+
+# === 적용한 복구책 (이번에 작동) ===
+recovery_applied:
+  - "부분 성공 복구: 트랜스크립트에서 PM 평가 yaml을 그대로 회수(재실행 안 함), 실패·유실된 Architect 평가만 재실행 → 토큰·시간 절약."
+  - "재실행 프롬프트에 인코딩 가드 추가: '응답은 한글+ASCII만, 이모지·특수 유니코드·surrogate 문자 금지, 코드의 특수문자는 [emoji] 같은 ASCII 플레이스홀더로 대체'. 재실행은 정상 완료."
+
+# === Proposed Patch ===
+proposed_patch:
+  target: "next_goal_context"   # n=1이라 skill 파일 직접수정 대신 컨텍스트 큐 (confidence_gate 준수)
+  kind: "text_change"
+  diff_hint: |
+    코드베이스를 읽어 raw 텍스트를 반환하는 sub-agent(특히 병렬 다수)를 호출하는 오케스트레이터(sprint-pm Phase 3·4,
+    dev-cycle Explore/verify 등)는:
+    (1) sub-agent 프롬프트에 인코딩 가드 명시 — "한글+ASCII만, 이모지·surrogate 문자 출력 금지, 코드의 특수문자는
+        ASCII 플레이스홀더로". 또는 가능하면 structured output(schema)으로 raw 코드 인용을 최소화.
+    (2) 병렬 sub-agent 중 일부만 실패/유실되면, 성공분은 트랜스크립트에서 회수하고 실패분만 재실행(전체 재실행 금지).
+    (3) `API 400 no low surrogate` 관측 시 원인은 '직전 sub-agent 출력의 lone surrogate'로 직행 진단.
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "sprint-pm Phase 3·4(PM/Architect 병렬) 및 다중 sub-agent 오케스트레이션: 코드 읽는 에이전트 프롬프트에 surrogate/이모지 금지 가드"
+  - "병렬 에이전트 부분 실패 복구: 트랜스크립트에서 성공분 회수 + 실패분만 재실행"
+  - "code-review/verify 등 다중 에이전트 스킬에서 동형(합류 시 인코딩 깨짐) 재발 추적 → n 누적 시 SKILL.md 직접 반영 검토"
+
+remaining_ambiguity:
+  - "근본 원인이 (a)코드 내 실제 이모지인지 (b)에이전트 출력이 4바이트 문자 경계에서 절단된 lone surrogate인지 미확정. (b)라면 프롬프트 가드만으론 불완전 — 출력 길이/절단 방지도 필요할 수 있음."
+  - "structured output(schema) 강제가 raw 텍스트 합류보다 이 문제에 강건한지(인코딩 검증이 도구 계층에서 선처리되는지) 미검증."
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    이번 세션에서 직접 관측·복구한 사건을 같은 세션 learn이 패턴화. 단 source가 객관적 API 에러 메시지(400 no low
+    surrogate)와 트랜스크립트 line ref라 self-report 편향은 제한적 — 실행 실패가 사실로 박제됨.
