@@ -1,0 +1,126 @@
+sprint_id: sp_2026_06_22_conv_ownership
+repo: 03hoho03/ai-character
+milestone: sp_2026_06_22_conv_ownership
+milestone_number: 5
+created_at: 2026-06-22
+created_by: sprint-pm
+length: open  # 무기한 — scope 완료 기준(사용자 결정)
+
+sprint_goal: |
+  익명 browserId 대화를 로그인 계정(userId) 소유로 전환한다:
+  클레임(#33) → 유니크키 전환(#34) → 로그인 직후 트리거(#37).
+  그 위에 계정 기준 대화 목록/삭제 인박스를 연다(#38 → 38a/38b/38c 분할).
+  Gemini 컨텍스트 캐싱(#39)은 소유 전환 테마와 독립한 인프라로 defer.
+
+# === 강제 게이트: out_of_scope ≥ 2 ===
+out_of_scope:
+  - "#39 Gemini 컨텍스트 캐싱 — 소유 전환 테마와 무관한 인프라 최적화 + spike 동반(최소토큰/TTL/과금 임계 미확정). PM·Arch 합의 defer. 별도 인프라 sprint."
+  - "대화 목록 검색·정렬·아카이브 — 38b/38c는 목록+삭제까지(사용자 결정). 발견 기능은 별도 테마."
+  - "#22 사용자 기억 직접 편집 — summary 단일 String 모델 불일치. 무관 테마."
+  - "#20 멀티모달(대화→이미지) — 비용·모델·저장소 스파이크 선행. 외부 의존."
+  - "#17 잔여(인기 랭킹) — Conversation.personaId FK 부재 선결. 발견 테마."
+
+# === 이번 sprint 실행 ticket (6) ===
+# 실행 순서: 33 → 34 → 40(38a) → 41(38b) → 37 → 42(38c)
+# (38a는 #33/#34 데이터축과 직교하여 병렬 가능 / 37은 38a 전환 중 대화캐시 무효화 정비 후 권장)
+included:
+  - issue: 33   # 29c
+    parent: 29
+    title: "익명 데이터 클레임 — 로그인 시 browserId row를 userId로 재소유"
+    estimated_size: M
+    order: 1
+    pm_view:
+      urgency: high
+      value: "계정 소유 전환의 토대. 익명 데이터를 userId로 재소유해야 로그인 사용자가 자기 대화를 본다(전 스프린트 가치 활성화)."
+      dependency: []
+    arch_view:
+      blast_radius: "schema.prisma(userId nullable+browserId 병행, #31/#32에서 토대 완비) + 신규 claim 서비스/엔드포인트 + characters.service/conversations.service 횡단 재소유 트랜잭션."
+      risk: "재소유 시 (userId,personaId) 중복 후보 발생 — DB는 아직 userId unique 미설정이라 안 막지만 #34가 unique 걸 때 깨짐. 멱등 + 충돌 규칙(#27 정책) 필수. 클레임 후 프론트 load-once 캐시 재소유 명시(lesson l_2026_06_20)."
+      decomposition_needed: false
+    agree: "PM·Arch 합의 include — Must 체인 첫 원소."
+
+  - issue: 34   # 29d
+    parent: 29
+    title: "유니크키 전환 (browserId,personaId)→(userId,personaId) + get-or-create 키 변경"
+    estimated_size: M
+    order: 2
+    pm_view:
+      urgency: high
+      value: "유니크키를 userId 기준으로 옮겨 로그인 사용자 1인=대화 1개 정합성 보장(get-or-create 정상화)."
+      dependency: [33]
+    arch_view:
+      blast_radius: "schema.prisma:40 @@unique 교체 + 신규 migration(unique 방향 전환, browserId NOT NULL 완화 검토) + conversations.service getOrCreate 키 + use-chat-persistence get-or-create 키."
+      risk: "기존 중복 (userId,personaId)에서 unique 생성 실패 — dedupe 선행 필수. 비로그인(userId null) 폴백 키 동작 설계 결정 필요."
+      decomposition_needed: true  # Architect 권고
+    conflict_resolution: "사용자 break: 통짜 include(PM 손). 단 Architect의 dedupe 선행 + 폴백키 설계 위험을 #34 본문/acceptance 선행 스텝으로 박제(코멘트 추가). #33 완료 검증을 게이트로."
+    lesson_watch: "l_2026_06_19_y_split_migration_foundation_gap 재발 추적 지점."
+
+  - issue: 40   # 38a
+    parent: 38
+    title: "conversations OwnerContext 전환 — 가드 배선 + service 5메서드 + DTO + HTTP 계약 테스트 신설"
+    estimated_size: M
+    order: 3
+    arch_view:
+      blast_radius: "conversations.controller(OptionalJwtGuard+resolveOwner) + conversations.service 5메서드 시그니처(browserId→OwnerContext) + dto/conversation.dto.ts + auth/owner.ts·optional-jwt.guard.ts 재사용 + 신규 HTTP 계약 테스트(현재 0개)."
+      risk: "5개 메서드가 browserId raw 비교 중 — 누락 시 로그인 사용자가 자기 대화에 404. 기존 service.spec Provider 하네스 갱신 필요(lesson l_2026_06_20)."
+      dependency: []  # 데이터축 #33/#34와 직교(런타임 소유 해석)
+    agree: "참고 패턴: characters #32 전환."
+
+  - issue: 41   # 38b
+    parent: 38
+    title: "대화 목록/삭제 API — GET /conversations 소유목록 + DELETE /conversations/:id + 라우트 순서 테스트"
+    estimated_size: S
+    order: 4
+    arch_view:
+      blast_radius: "conversations.controller 신규 GET 목록 / DELETE :id + service 조회·삭제 + cascade."
+      risk: ":id 경로(messages/summarize 등) 공존 — 라우트 순서 회귀 테스트 필수(CLAUDE.md 규약)."
+      dependency: [40]
+
+  - issue: 37   # 30c
+    parent: 30
+    title: "로그인 직후 클레임 트리거 — migrateLegacyOnce 패턴 확장"
+    estimated_size: S
+    order: 5
+    pm_view:
+      urgency: medium
+      value: "로그인 직후 자동 클레임으로 수동 조작 없이 소유 전환 체감(전환 경험의 마지막 1마일)."
+      dependency: [33]
+    arch_view:
+      blast_radius: "session-context.tsx(login/signup side-effect) + character-store.reloadUserCharacters + 신규 claim 클라 래퍼 + use-chat-persistence 대화 캐시 무효화."
+      risk: "character-store는 전역 무효화 함수 존재하나 use-chat-persistence는 컴포넌트-local ref라 동일 패턴 미적용 — 대화 캐시 stale. 캐시 무효화 경로를 이 티켓에서 함께 다뤄야 트리거가 의미를 가짐(lesson l_2026_06_20)."
+      dependency: [33]
+    agree: "PM·Arch 합의 include."
+
+  - issue: 42   # 38c
+    parent: 38
+    title: "프론트 대화 인박스 — /conversations 페이지 + 홈 진입점 + 세션전환 재로드"
+    estimated_size: M
+    order: 6
+    arch_view:
+      blast_radius: "신규 /conversations 페이지 + 홈 진입점 + conversations-api list/delete 래퍼 + session-context 인박스 무효화."
+      risk: "세션 전환 시 목록 재로드 누락 시 stale(lesson l_2026_06_20). 컴포넌트 테스트로 렌더+삭제 단언."
+      dependency: [41]
+
+# === deferred (issue 유지, Milestone 미할당) ===
+deferred:
+  - issue: 39
+    title: "Gemini 컨텍스트 캐싱 — 정적 prefix CachedContent화"
+    reason: "소유 전환 테마와 독립한 인프라 최적화 + spike(최소토큰/TTL/과금 임계) 불확실성으로 risk budget 잠식. PM·Arch 합의 defer. cut이 아닌 이유는 반복 prefix 과금 절감 가치 자체는 유효."
+    revisit_after: "소유 체인(#33→#34→#38) 완료 후 별도 인프라 sprint"
+
+# === 분해된 parent epic (추적용 open) ===
+decomposed_parents:
+  - issue: 38
+    label: "sprint-pm:needs-decomp"
+    children_included: [40, 41, 42]   # 38a/38b/38c
+    children_deferred: []
+
+cut: []  # cut 없음
+
+# === acceptance gate ===
+gates:
+  normalization_accuracy: "신규 draft 2종(#38·#39) 100% confirm + 기존 deferred 3종(#33/#34/#37) 합류 + 사용자 break 2건(#34 통짜/#38 3분할) 100% 반영"   # ≥80% ✓
+  out_of_scope_count: 5          # ≥2 ✓
+  deferred_ratio: "#39 defer 1건 + #38 통짜→3분할(스코프 재단)로 backlog 6 work-unit 중 1 defer = ~17%; 단 사용자 사전 결정 스코프(Must 체인 고정)라 PM성은 #38 분할·#34 위험 박제로 작동"  # 주: 사용자 사전 확정 스코프
+  pm_arch_conflicts: 2           # #34 (include vs decompose) + #38 (include vs decompose)  ≥1 ✓
+  user_attestation: attested  # 2026-06-22 사용자 break(#34 통짜 include / #38 3분할)
