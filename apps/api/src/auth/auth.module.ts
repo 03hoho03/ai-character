@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { ClaimService } from './claim.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtGuard } from './optional-jwt.guard';
 
@@ -20,7 +21,7 @@ import { OptionalJwtGuard } from './optional-jwt.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, OptionalJwtGuard],
+  providers: [AuthService, ClaimService, JwtAuthGuard, OptionalJwtGuard],
   // #32 소유 경로(characters/chat)가 OptionalJwtGuard를 쓰도록 export(JwtModule도 함께 노출)
   exports: [OptionalJwtGuard, JwtModule],
 })

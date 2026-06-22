@@ -19,3 +19,13 @@ export class LoginDto {
   @IsNotEmpty()
   password!: string;
 }
+
+/**
+ * #33 POST /auth/claim — 재소유할 익명 식별자(browserId)만 받는다.
+ * userId는 DTO에 없다 — 소유 주체는 쿠키 JWT(가드)에서만 온다(#23 신뢰경계, whitelist가 잉여 필드 strip).
+ */
+export class ClaimDto {
+  @IsString()
+  @IsNotEmpty()
+  browserId!: string;
+}

@@ -16,11 +16,13 @@ import {
 } from 'react';
 import {
   type AuthUser,
+  claimAnonymousData,
   fetchMe,
   login as apiLogin,
   logout as apiLogout,
   signup as apiSignup,
 } from './auth-api';
+import { getBrowserId } from './browser-id';
 import { reloadUserCharacters } from './character-store';
 
 /** loading: 최초 me 조회 중 / authenticated: 로그인 / anonymous: 비로그인(폴백) */
@@ -53,19 +55,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const me = await apiLogin(email, password);
-    setUser(me);
-    setStatus('authenticated');
-    void reloadUserCharacters(); // #36 새 계정 자격으로 '내 캐릭터' 재로드
-  }, []);
-
-  const signup = useCallback(async (email: string, password: string) => {
-    const me = await apiSignup(email, password);
-    setUser(me);
-    setStatus('authenticated');
+  // #33 로그인/가입 직후 익명 소유물을 계정으로 재소유한 뒤 캐릭터를 재로드한다.
+  // 클레임이 reload보다 먼저여야 userId가 부여된 캐릭터가 '내 캐릭터' 재로드에 잡힌다(순서 의존).
+  // 클레임은 best-effort(throw 안 함) — 실패해도 로그인 상태는 유지.
+  const claimThenReload = useCallback(async () => {
+    await claimAnonymousData(getBrowserId());
     void reloadUserCharacters();
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const me = await apiLogin(email, password);
+      setUser(me);
+      setStatus('authenticated');
+      await claimThenReload();
+    },
+    [claimThenReload],
+  );
+
+  const signup = useCallback(
+    async (email: string, password: string) => {
+      const me = await apiSignup(email, password);
+      setUser(me);
+      setStatus('authenticated');
+      await claimThenReload();
+    },
+    [claimThenReload],
+  );
 
   const logout = useCallback(async () => {
     await apiLogout();

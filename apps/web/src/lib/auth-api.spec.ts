@@ -3,7 +3,7 @@
  * 핵심: 모든 호출이 credentials:'include'(쿠키 송수신)인지, me/logout이 실패를 삼키는지.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthError, fetchMe, login, logout, signup } from './auth-api';
+import { AuthError, claimAnonymousData, fetchMe, login, logout, signup } from './auth-api';
 
 const BASE = 'http://localhost:4000';
 
@@ -105,6 +105,31 @@ describe('auth-api (#35)', () => {
     it('네트워크 에러면 null', async () => {
       fetchMock.mockRejectedValueOnce(new Error('network'));
       expect(await fetchMe()).toBeNull();
+    });
+  });
+
+  describe('claimAnonymousData (#33)', () => {
+    it('POST /auth/claim 에 credentials:include + {browserId}를 보내고 건수를 반환한다', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ characters: 2, conversations: 1 }));
+
+      const result = await claimAnonymousData('b1');
+
+      expect(result).toEqual({ characters: 2, conversations: 1 });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/auth/claim`);
+      expect((init as RequestInit).method).toBe('POST');
+      expect((init as RequestInit).credentials).toBe('include');
+      expect(JSON.parse((init as RequestInit).body as string)).toEqual({ browserId: 'b1' });
+    });
+
+    it('non-ok면 null(best-effort — 로그인 흐름을 막지 않는다)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'unauth' }, 401));
+      expect(await claimAnonymousData('b1')).toBeNull();
+    });
+
+    it('네트워크 에러여도 throw하지 않고 null', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('network'));
+      await expect(claimAnonymousData('b1')).resolves.toBeNull();
     });
   });
 });

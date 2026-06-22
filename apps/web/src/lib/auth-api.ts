@@ -68,3 +68,20 @@ export async function fetchMe(): Promise<AuthUser | null> {
     return null;
   }
 }
+
+/** #33 클레임 결과 — 재소유된 Character/Conversation 건수 */
+export type ClaimResult = { characters: number; conversations: number };
+
+/**
+ * #33 익명 데이터 클레임 — 로그인 직후 현재 browserId 소유물을 계정으로 재소유 요청.
+ * best-effort: 실패(미인증/네트워크)는 null로 삼켜 로그인 흐름을 막지 않는다(쿠키는 credentials로 운반).
+ */
+export async function claimAnonymousData(browserId: string): Promise<ClaimResult | null> {
+  try {
+    const res = await postCredentials('/auth/claim', { browserId });
+    if (!res.ok) return null;
+    return (await res.json()) as ClaimResult;
+  } catch {
+    return null;
+  }
+}

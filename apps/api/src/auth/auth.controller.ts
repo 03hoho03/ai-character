@@ -10,7 +10,8 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService, type SafeUser } from './auth.service';
-import { LoginDto, SignupDto } from './dto/auth.dto';
+import { ClaimService, type ClaimResult } from './claim.service';
+import { ClaimDto, LoginDto, SignupDto } from './dto/auth.dto';
 import { AUTH_COOKIE, JwtAuthGuard } from './jwt-auth.guard';
 
 /** JWT 쿠키 수명 — 7일(ms). Set-Cookie Max-Age는 초(604800)로 직렬화된다. */
@@ -22,7 +23,10 @@ const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly claim: ClaimService,
+  ) {}
 
   @Post('signup')
   async signup(
@@ -56,6 +60,20 @@ export class AuthController {
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie(AUTH_COOKIE);
     return { ok: true };
+  }
+
+  /**
+   * #33 익명 데이터 클레임 — 로그인 사용자가 자기 browserId 소유물을 계정으로 재소유.
+   * 신원(userId)은 가드가 쿠키에서 주입한 req.user에서만 — body.browserId만 신뢰(#23 신뢰경계).
+   */
+  @Post('claim')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  claimAnonymous(
+    @Body() dto: ClaimDto,
+    @Req() req: Request & { user: { userId: string } },
+  ): Promise<ClaimResult> {
+    return this.claim.claimAnonymousData(req.user.userId, dto.browserId);
   }
 
   private setAuthCookie(res: Response, token: string): void {

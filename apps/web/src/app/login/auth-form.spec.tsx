@@ -17,8 +17,10 @@ vi.mock('../../lib/auth-api', () => ({
   login: vi.fn(),
   signup: vi.fn(),
   logout: vi.fn(),
+  claimAnonymousData: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('../../lib/character-store', () => ({ reloadUserCharacters: vi.fn() }));
+vi.mock('../../lib/browser-id', () => ({ getBrowserId: vi.fn(() => 'b1') }));
 
 import * as authApi from '../../lib/auth-api';
 import { SessionProvider } from '../../lib/session-context';

@@ -12,8 +12,10 @@ vi.mock('./auth-api', () => ({
   login: vi.fn(),
   signup: vi.fn(),
   logout: vi.fn(),
+  claimAnonymousData: vi.fn(),
 }));
 vi.mock('./character-store', () => ({ reloadUserCharacters: vi.fn() }));
+vi.mock('./browser-id', () => ({ getBrowserId: vi.fn(() => 'b1') }));
 
 import * as authApi from './auth-api';
 import { reloadUserCharacters } from './character-store';
@@ -21,6 +23,7 @@ import { SessionProvider, useSession } from './session-context';
 
 const mocked = vi.mocked(authApi);
 const reloadMock = vi.mocked(reloadUserCharacters);
+const claimMock = vi.mocked(authApi.claimAnonymousData);
 const wrapper = ({ children }: { children: ReactNode }) => (
   <SessionProvider>{children}</SessionProvider>
 );
@@ -32,6 +35,8 @@ describe('SessionProvider / useSession (#35)', () => {
     mocked.signup.mockReset();
     mocked.logout.mockReset();
     reloadMock.mockReset();
+    claimMock.mockReset();
+    claimMock.mockResolvedValue({ characters: 0, conversations: 0 });
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -68,6 +73,56 @@ describe('SessionProvider / useSession (#35)', () => {
     expect(result.current.status).toBe('authenticated');
     expect(result.current.user).toEqual({ id: 'u1', email: 'a@b.com' });
     expect(reloadMock).toHaveBeenCalled(); // #36 새 계정 자격으로 캐릭터 재로드
+  });
+
+  it('login 시 #33 클레임을 browserId로 호출하고, 클레임 완료 후에 캐릭터를 재로드한다(순서)', async () => {
+    mocked.fetchMe.mockResolvedValue(null);
+    mocked.login.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+
+    const { result } = renderHook(() => useSession(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+
+    await act(async () => {
+      await result.current.login('a@b.com', 'password123');
+    });
+
+    expect(claimMock).toHaveBeenCalledWith('b1'); // 익명 소유물 재소유
+    expect(reloadMock).toHaveBeenCalled();
+    // 클레임이 reload보다 먼저 — userId 부여된 캐릭터가 재로드에 잡히도록
+    expect(claimMock.mock.invocationCallOrder[0]).toBeLessThan(
+      reloadMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('signup 시에도 클레임 후 재로드한다', async () => {
+    mocked.fetchMe.mockResolvedValue(null);
+    mocked.signup.mockResolvedValue({ id: 'u2', email: 'new@b.com' });
+
+    const { result } = renderHook(() => useSession(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+
+    await act(async () => {
+      await result.current.signup('new@b.com', 'password123');
+    });
+
+    expect(claimMock).toHaveBeenCalledWith('b1');
+    expect(reloadMock).toHaveBeenCalled();
+  });
+
+  it('클레임 실패(null)여도 로그인은 authenticated로 유지된다(best-effort)', async () => {
+    mocked.fetchMe.mockResolvedValue(null);
+    mocked.login.mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+    claimMock.mockResolvedValue(null);
+
+    const { result } = renderHook(() => useSession(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('anonymous'));
+
+    await act(async () => {
+      await result.current.login('a@b.com', 'password123');
+    });
+
+    expect(result.current.status).toBe('authenticated');
+    expect(reloadMock).toHaveBeenCalled();
   });
 
   it('logout 시 user 제거 + anonymous 전이', async () => {
