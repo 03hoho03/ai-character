@@ -104,7 +104,8 @@ export interface PersistedMessage {
 
 export interface ConversationRecord {
   id: string;
-  browserId: string;
+  /** #34 nullable — 로그인 전용 생성(#40) 대비. 비로그인은 browserId 운반 유지 */
+  browserId?: string | null;
   /** #31 계정 소유(nullable, browserId 병행). 소유검증/유니크키 전환은 #32/#34 */
   userId?: string | null;
   personaId: string;

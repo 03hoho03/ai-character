@@ -23,7 +23,8 @@ model User {
 
 model Conversation {
   id        String    @id @default(cuid())
-  browserId String
+  // #34 browserId nullable — 로그인 전용 생성(#40) 대비. 비로그인은 계속 browserId 운반.
+  browserId String?
   personaId String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -37,7 +38,10 @@ model Conversation {
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
 
+  // #34 비로그인 축(browserId) 유지 + 로그인 축(userId) 추가. userId nullable이라
+  // Postgres가 NULL을 distinct로 처리 → userId unique는 로그인 row에만 자연 partial 집행.
   @@unique([browserId, personaId])
+  @@unique([userId, personaId])
   @@index([userId]) // #31 계정 소유 조회 대비
 }
 
