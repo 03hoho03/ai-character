@@ -123,7 +123,7 @@ export interface ConversationWithMessages extends ConversationRecord {
 
 /** POST /conversations/:id/summarize 요청 (#15) */
 export interface SummarizeRequest {
-  browserId: string;
+  browserId?: string;
 }
 
 /** 요약 결과 — summarizeConversation 응답/영속 단위 */
@@ -134,7 +134,7 @@ export interface SummaryResult {
 
 /** POST /conversations 요청 — (browserId, personaId) get-or-create */
 export interface CreateConversationRequest {
-  browserId: string;
+  browserId?: string;
   personaId: string;
 }
 
@@ -169,7 +169,7 @@ export interface UpdateCharacterRequest extends Partial<Omit<Persona, 'id'>> {
 
 /** POST /conversations/:id/messages 요청 */
 export interface AppendMessageRequest {
-  browserId: string;
+  browserId?: string;
   role: ChatMessage['role'];
   content: string;
 }
@@ -179,6 +179,6 @@ export interface AppendMessageRequest {
  * 편집/재생성 시 후속 turn truncate를 '전체 교체'로 달성한다(append-only 한계 해소).
  */
 export interface ReplaceMessagesRequest {
-  browserId: string;
+  browserId?: string;
   messages: ChatMessage[];
 }

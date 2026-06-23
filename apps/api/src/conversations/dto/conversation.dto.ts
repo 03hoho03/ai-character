@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import type {
   AppendMessageRequest,
   ChatMessage,
@@ -10,9 +10,11 @@ import type {
 
 /** POST /conversations 본문 */
 export class CreateConversationDto implements CreateConversationRequest {
+  // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -21,9 +23,11 @@ export class CreateConversationDto implements CreateConversationRequest {
 
 /** GET /conversations 쿼리 */
 export class GetConversationQueryDto {
+  // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -32,9 +36,11 @@ export class GetConversationQueryDto {
 
 /** POST /conversations/:id/messages 본문 */
 export class AppendMessageDto implements AppendMessageRequest {
+  // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsIn(['user', 'model'])
   role!: ChatMessage['role'];
@@ -56,9 +62,11 @@ class ChatMessageDto implements ChatMessage {
 
 /** PUT /conversations/:id/messages 본문 (#18) — 메시지 열 전체 교체 */
 export class ReplaceMessagesDto implements ReplaceMessagesRequest {
+  // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -68,7 +76,9 @@ export class ReplaceMessagesDto implements ReplaceMessagesRequest {
 
 /** POST /conversations/:id/summarize 본문 (#15) */
 export class SummarizeDto implements SummarizeRequest {
+  // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  browserId!: string;
+  browserId?: string;
 }
