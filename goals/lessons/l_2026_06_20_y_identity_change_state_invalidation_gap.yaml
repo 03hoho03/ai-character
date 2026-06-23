@@ -2,7 +2,7 @@ lesson_id: l_2026_06_20_y_identity_change_state_invalidation_gap
 category: define_weakness
 title: "소유 식별자/컨텍스트를 바꾸는 변경이, 그 식별자에 묶인 2차 상태(메모이즈 캐시·테스트 Provider 하네스)의 무효화를 미열거 — '자격만 주입하면 끝' 가정"
 created_at: "2026-06-20"
-updated_at: "2026-06-20"
+updated_at: "2026-06-24"
 
 # === Sources ===
 sources:
@@ -41,7 +41,18 @@ confidence_reason: |
   매트릭스상 n_cycles=1이라 tentative 유지. 다음에 새 컨텍스트/캐시 도입(예: #33 클레임 시 대화 캐시 재소유,
   #34 유니크키 전환 후 get-or-create 캐시) 사이클에서 동일 trigger+symptom 재발 시 weak/moderate 승급.
 
-counter_evidence: []
+counter_evidence:
+  - run_id: dev-cycle/2026_06_23_conv-ownercontext (#40) + dev-cycle/2026_06_24_conv-inbox-ui (#42)
+    file_ref: "apps/api/test/conversations.service.spec.ts (#40 하네스) / apps/web/src/app/conversations/conversation-inbox.tsx (#42 page-local)"
+    note: |
+      재발 추적 지점(#33/#34/#38 계열)에서 *준수*. (1) #40: 소유 식별자(browserId→OwnerContext) 전환의
+      테스트 2차 상태를 열거 — conversations.service.spec 하네스를 owner 객체({browserId}|{userId})로 갱신,
+      ownerWhere 키를 내용 단언(식별자 변경이 테스트 Provider/입력 하네스 무효화를 요구함을 처리).
+      (2) #42: '소유자별 파생 상태(인박스 목록)'를 **load-once 캐시 대신 page-local fetch(영속 캐시 부재)**로 구현 —
+      useEffect [status, user?.id] 의존으로 세션 전환 시 자동 재로드. 사용자가 전역 store(character-store식)와
+      page-local 중 후자를 명시 선택. *2차 상태(캐시) 자체를 만들지 않아* stale 무효화 문제를 원천 제거.
+      반증 아님(약점 실재) — 완화책이 작동하고, 더 나아가 '캐시를 안 만드는' 우회까지 확장된 긍정 증거.
+    observed_at: "2026-06-24"
 
 # === Proposed Patch ===
 proposed_patch:
@@ -61,7 +72,8 @@ applies_to_next_goal:
   - "다음 dev-cycle: 식별자/컨텍스트 변경 티켓 PRD failure_modes에 '옛 식별자에 묶인 2차 상태(캐시·테스트 하네스) 무효화' 항목"
   - "전역 Provider 소비 컴포넌트를 기존 화면에 주입할 때: 그 화면의 기존 *.spec을 grep → Provider 래핑/모킹 갱신 동반(별도 회귀)"
   - "성공 기준이 'A 운반 + B 노출' 2절이면 B를 독립 점검 — 메커니즘(A)이 상태 갱신(B)을 자동 보장한다고 가정 금지"
-  - "특히 #33(익명→계정 클레임: 대화/캐릭터 재소유 후 캐시 갱신), #34(유니크키 전환 후 get-or-create 캐시 키) 재발 추적"
+  - "**완화 메뉴 확장(#42)**: 소유자별 파생 상태를 새로 만들 때, load-once 전역 캐시+명시 무효화 대신 *page-local fresh fetch(영속 캐시 부재, 세션 식별자 의존 useEffect)*를 우선 고려 — 단일 화면 소비면 캐시 자체를 안 만드는 게 stale을 원천 차단(가장 단순·안전). 전역 공유가 진짜 필요할 때만 store+무효화."
+  - "준수 확인됨: #33(클레임 후 캐시 순서 무효화), #40(테스트 하네스 OwnerContext 갱신), #42(page-local). 다음 캐시/컨텍스트 도입 티켓에서 계속 추적"
 
 remaining_ambiguity:
   - "캐시 무효화의 입도 — character-store는 전체 reload로 충분했으나, 대화별/키별 캐시(#33/#34)는 부분 무효화가 필요할 수 있어 'reload 한 방' 일반화가 과할지 미정."

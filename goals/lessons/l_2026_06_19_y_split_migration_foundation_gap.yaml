@@ -2,7 +2,7 @@ lesson_id: l_2026_06_19_y_split_migration_foundation_gap
 category: define_weakness
 title: "스키마를 토대+전환 두 dev-cycle로 분할 시, 토대 티켓이 후속 전환의 컬럼 제약을 미예견 — 후속에서 추가 마이그레이션"
 created_at: "2026-06-19"
-updated_at: "2026-06-19"
+updated_at: "2026-06-24"
 
 # === Sources ===
 sources:
@@ -39,7 +39,17 @@ confidence_reason: |
   self-report 성격이라 강제 강등 규칙 1에 근접 — tentative 유지가 매트릭스상 적절.
   다음 분할 마이그레이션(예: #34 유니크키 전환)에서 같은 trigger+symptom 재발 시 weak 승급.
 
-counter_evidence: []
+counter_evidence:
+  - run_id: dev-cycle/2026_06_23_conv-unique-key (비정식 — verify_report 기반 회고, #34)
+    file_ref: "dev-cycle/2026_06_23_conv-unique-key/verify_report.md#경계 메모 / apps/api/prisma/migrations/20260623090000_conversation_userid_unique"
+    note: |
+      재발 추적 지점(#34 유니크키 전환)에서 함정 *회피*. #34 토대 PRD가 후속(#40)이 요구할 제약을
+      선점검: browserId nullable화(DROP NOT NULL) + unique 방향((browserId,personaId) 유지 +
+      (userId,personaId) 추가)을 *이번* 마이그레이션에 함께 처리. 결과 #40(OwnerContext 런타임 전환)이
+      추가 마이그레이션 0으로 진행(verify: migrate status up to date, #40에서 스키마 변경 없음).
+      반증 아님(약점 실재 — l_2026_06_19의 #31→#32 사건은 유효). 완화책(토대에서 후속 제약 선점검)이
+      작동한 긍정 증거. patch 권장(토대 verify의 '다음 티켓이 추가 마이그레이션 없이 진행되나' 자문)이 실효.
+    observed_at: "2026-06-23"
 
 # === Proposed Patch ===
 proposed_patch:
