@@ -10,6 +10,9 @@ export default function Home() {
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-3xl font-bold">AI 캐릭터 챗</h1>
         <div className="flex items-center gap-4">
+          <Link href="/conversations" className="text-sm font-medium underline hover:text-zinc-600">
+            내 대화
+          </Link>
           <Link href="/discover" className="text-sm font-medium underline hover:text-zinc-600">
             캐릭터 탐색
           </Link>

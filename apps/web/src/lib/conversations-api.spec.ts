@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConversationWithMessages } from '@ai-character/shared';
 import {
   appendMessage,
+  deleteConversation,
   ensureConversation,
   fetchConversation,
+  fetchConversationList,
   replaceMessages,
   summarizeConversation,
 } from './conversations-api';
@@ -159,6 +161,59 @@ describe('conversations-api (#14)', () => {
         const init = fetchMock.mock.calls[0][1] as RequestInit;
         expect(init.credentials).toBe('include');
       }
+    });
+  });
+
+  describe('fetchConversationList (#42)', () => {
+    it('GET /conversations/list 를 credentials:include로 호출하고 목록을 반환한다', async () => {
+      const list = [
+        { id: 'c1', personaId: 'tpl-x', characterName: '엘베리아', lastMessage: null, updatedAt: '2026-06-24' },
+      ];
+      fetchMock.mockResolvedValueOnce(jsonResponse(list));
+
+      const result = await fetchConversationList('b1');
+
+      expect(result).toEqual(list);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain(`${BASE}/conversations/list`);
+      expect(String(url)).toContain('browserId=b1');
+      expect((init as RequestInit).credentials).toBe('include');
+    });
+
+    it('browserId 없이도 호출 가능(로그인 쿠키 우선) — 쿼리 없이', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse([]));
+      await fetchConversationList();
+      expect(String(fetchMock.mock.calls[0][0])).toBe(`${BASE}/conversations/list`);
+    });
+
+    it('실패(non-ok)면 빈 배열(best-effort — 인박스 빈 화면)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
+      expect(await fetchConversationList('b1')).toEqual([]);
+    });
+
+    it('네트워크 에러여도 빈 배열', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('network'));
+      expect(await fetchConversationList('b1')).toEqual([]);
+    });
+  });
+
+  describe('deleteConversation (#42)', () => {
+    it('DELETE /conversations/:id 를 credentials:include로 호출한다', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 })); // 204는 본문 없음
+
+
+
+      await deleteConversation('c1', 'b1');
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain(`${BASE}/conversations/c1`);
+      expect((init as RequestInit).method).toBe('DELETE');
+      expect((init as RequestInit).credentials).toBe('include');
+    });
+
+    it('실패(non-ok)면 throw', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nope' }, 404));
+      await expect(deleteConversation('c1', 'b1')).rejects.toThrow();
     });
   });
 });

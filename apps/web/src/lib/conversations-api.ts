@@ -10,6 +10,7 @@
  */
 import type {
   ChatMessage,
+  ConversationListItem,
   ConversationRecord,
   ConversationWithMessages,
   SummaryResult,
@@ -83,6 +84,33 @@ export async function summarizeConversation(
   } catch {
     return { summary: null, summarizedCount: 0 };
   }
+}
+
+/**
+ * #41/#42 소유자 대화 목록(인박스). 로그인이면 쿠키 userId가 우선하므로 browserId는 비로그인 폴백.
+ * best-effort: 실패면 빈 배열(인박스는 빈 화면으로 — 채팅을 막지 않음).
+ */
+export async function fetchConversationList(
+  browserId?: string,
+): Promise<ConversationListItem[]> {
+  const qs = browserId ? `?${new URLSearchParams({ browserId }).toString()}` : '';
+  try {
+    const res = await fetch(`${API_URL}/conversations/list${qs}`, { credentials: 'include' });
+    if (!res.ok) return [];
+    return (await res.json()) as ConversationListItem[];
+  } catch {
+    return [];
+  }
+}
+
+/** #41/#42 대화 삭제(소유자만 — 백엔드 비소유 404). 실패는 throw(호출부가 UX 처리) */
+export async function deleteConversation(conversationId: string, browserId?: string): Promise<void> {
+  const qs = browserId ? `?${new URLSearchParams({ browserId }).toString()}` : '';
+  const res = await fetch(`${API_URL}/conversations/${conversationId}${qs}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(`deleteConversation failed: ${res.status}`);
 }
 
 /** #18 메시지 열 전체 교체 — 편집/재생성 시 후속 turn truncate */

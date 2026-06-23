@@ -38,4 +38,11 @@ describe('Home (#7)', () => {
     const link = screen.getByRole('link', { name: /새 캐릭터 만들기/ });
     expect(link.getAttribute('href')).toBe('/characters/new');
   });
+
+  it("#42 헤더에 '내 대화' 인박스 진입점이 /conversations로 링크한다", () => {
+    renderHome();
+
+    const link = screen.getByRole('link', { name: /내 대화/ });
+    expect(link.getAttribute('href')).toBe('/conversations');
+  });
 });
