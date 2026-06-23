@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { SUMMARY_RECENT_TURNS, SUMMARY_TURN_THRESHOLD } from '@ai-character/shared';
+import { PERSONA_TEMPLATES, SUMMARY_RECENT_TURNS, SUMMARY_TURN_THRESHOLD } from '@ai-character/shared';
 import { ConversationsService } from '../src/conversations/conversations.service';
 
 /**
@@ -11,12 +11,15 @@ import { ConversationsService } from '../src/conversations/conversations.service
 describe('ConversationsService (#40 OwnerContext)', () => {
   const conversation = {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
   };
   const message = { create: jest.fn(), deleteMany: jest.fn() };
+  const character = { findMany: jest.fn() };
   const $transaction = jest.fn();
-  const prisma = { conversation, message, $transaction } as never;
+  const prisma = { conversation, message, character, $transaction } as never;
   const summarize = jest.fn();
   const chatService = { summarize } as never;
   let service: ConversationsService;
@@ -284,6 +287,116 @@ describe('ConversationsService (#40 OwnerContext)', () => {
       await expect(service.summarizeIfNeeded('nope', anon)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('listOwned (#41)', () => {
+    const tpl = PERSONA_TEMPLATES[0]; // tpl-* 캐릭터명 해석 검증용
+
+    it('비로그인: browserId 소유 대화를 updatedAt 최신순 + 마지막 메시지(take:1)로 조회', async () => {
+      conversation.findMany.mockResolvedValue([]);
+      character.findMany.mockResolvedValue([]);
+
+      await service.listOwned(anon);
+
+      const arg = conversation.findMany.mock.calls[0][0];
+      expect(arg.where).toEqual({ browserId: 'b1' });
+      expect(arg.orderBy).toEqual({ updatedAt: 'desc' });
+      expect(arg.include).toEqual({
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      });
+    });
+
+    it('로그인: userId 소유로 조회(타 소유 미노출)', async () => {
+      conversation.findMany.mockResolvedValue([]);
+      character.findMany.mockResolvedValue([]);
+
+      await service.listOwned(user);
+
+      expect(conversation.findMany.mock.calls[0][0].where).toEqual({ userId: 'u1' });
+    });
+
+    it('캐릭터명 해석: tpl-*는 템플릿 name, usr-*는 Character DB name, 미존재는 null', async () => {
+      const now = new Date();
+      conversation.findMany.mockResolvedValue([
+        { id: 'c1', personaId: tpl.id, updatedAt: now, messages: [{ role: 'user', content: '안녕', createdAt: now }] },
+        { id: 'c2', personaId: 'usr-a', updatedAt: now, messages: [] },
+        { id: 'c3', personaId: 'usr-gone', updatedAt: now, messages: [] },
+      ]);
+      character.findMany.mockResolvedValue([{ id: 'usr-a', name: '내캐릭' }]);
+
+      const result = await service.listOwned(anon);
+
+      expect(result).toEqual([
+        {
+          id: 'c1',
+          personaId: tpl.id,
+          characterName: tpl.name,
+          lastMessage: { role: 'user', content: '안녕', createdAt: now },
+          updatedAt: now,
+        },
+        { id: 'c2', personaId: 'usr-a', characterName: '내캐릭', lastMessage: null, updatedAt: now },
+        { id: 'c3', personaId: 'usr-gone', characterName: null, lastMessage: null, updatedAt: now },
+      ]);
+    });
+
+    it('usr-* 다건이어도 character.findMany는 1회만(N+1 없음), id in [...] 배치', async () => {
+      const now = new Date();
+      conversation.findMany.mockResolvedValue([
+        { id: 'c1', personaId: 'usr-a', updatedAt: now, messages: [] },
+        { id: 'c2', personaId: 'usr-b', updatedAt: now, messages: [] },
+        { id: 'c3', personaId: tpl.id, updatedAt: now, messages: [] }, // tpl은 DB 조회 대상 아님
+      ]);
+      character.findMany.mockResolvedValue([
+        { id: 'usr-a', name: 'A' },
+        { id: 'usr-b', name: 'B' },
+      ]);
+
+      await service.listOwned(anon);
+
+      expect(character.findMany).toHaveBeenCalledTimes(1);
+      const arg = character.findMany.mock.calls[0][0];
+      expect(arg.where).toEqual({ id: { in: ['usr-a', 'usr-b'] } });
+    });
+
+    it('대화 0건이면 빈 배열(character 조회 생략 가능)', async () => {
+      conversation.findMany.mockResolvedValue([]);
+      character.findMany.mockResolvedValue([]);
+
+      expect(await service.listOwned(anon)).toEqual([]);
+    });
+  });
+
+  describe('remove (#41)', () => {
+    it('소유자면 conversation.delete 호출(메시지 cascade)', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', browserId: 'b1', userId: null });
+      conversation.delete.mockResolvedValue({ id: 'c1' });
+
+      await service.remove('c1', anon);
+
+      expect(conversation.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+    });
+
+    it('비소유면 NotFound (delete 미호출)', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', browserId: 'owner', userId: null });
+
+      await expect(service.remove('c1', { browserId: 'attacker' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(conversation.delete).not.toHaveBeenCalled();
+    });
+
+    it('로그인 owner의 userId 불일치 → NotFound', async () => {
+      conversation.findUnique.mockResolvedValue({ id: 'c1', userId: 'other', browserId: null });
+
+      await expect(service.remove('c1', user)).rejects.toBeInstanceOf(NotFoundException);
+      expect(conversation.delete).not.toHaveBeenCalled();
+    });
+
+    it('없으면 NotFound', async () => {
+      conversation.findUnique.mockResolvedValue(null);
+      await expect(service.remove('nope', anon)).rejects.toBeInstanceOf(NotFoundException);
+      expect(conversation.delete).not.toHaveBeenCalled();
     });
   });
 });

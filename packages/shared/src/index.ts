@@ -121,6 +121,19 @@ export interface ConversationWithMessages extends ConversationRecord {
   messages: PersistedMessage[];
 }
 
+/**
+ * #41 GET /conversations/list 항목 — 인박스 표시용.
+ * characterName: tpl-*는 템플릿, usr-*는 Character DB로 백엔드가 해석(삭제/미존재는 null).
+ * 날짜는 JSON 직렬화 형태(ISO 문자열).
+ */
+export interface ConversationListItem {
+  id: string;
+  personaId: string;
+  characterName: string | null;
+  lastMessage: { role: ChatMessage['role']; content: string; createdAt: string } | null;
+  updatedAt: string;
+}
+
 /** POST /conversations/:id/summarize 요청 (#15) */
 export interface SummarizeRequest {
   browserId?: string;

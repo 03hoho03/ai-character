@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  PERSONA_TEMPLATES,
   SUMMARY_RECENT_TURNS,
   SUMMARY_TURN_THRESHOLD,
   type ChatMessage,
@@ -43,6 +44,59 @@ export class ConversationsService {
       where: this.ownerPersonaWhere(owner, personaId),
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     });
+  }
+
+  /**
+   * #41 소유자 대화 목록(인박스) — updatedAt 최신순, 항목별 마지막 메시지 + 캐릭터명.
+   * 캐릭터명: tpl-*는 shared 템플릿, usr-*는 Character DB(배치 1회 조회, N+1 회피), 삭제/미존재는 null.
+   * 날짜(updatedAt/createdAt)는 Prisma Date를 그대로 반환 — HTTP 직렬화 시 ISO 문자열(ConversationListItem 계약).
+   */
+  async listOwned(owner: OwnerContext) {
+    const conversations = await this.prisma.conversation.findMany({
+      where: ownerWhere(owner),
+      orderBy: { updatedAt: 'desc' },
+      include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+
+    const usrIds = [
+      ...new Set(
+        conversations.filter((c) => !c.personaId.startsWith('tpl-')).map((c) => c.personaId),
+      ),
+    ];
+    const chars = usrIds.length
+      ? await this.prisma.character.findMany({
+          where: { id: { in: usrIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const nameById = new Map(chars.map((c) => [c.id, c.name]));
+
+    return conversations.map((c) => ({
+      id: c.id,
+      personaId: c.personaId,
+      characterName: c.personaId.startsWith('tpl-')
+        ? (PERSONA_TEMPLATES.find((p) => p.id === c.personaId)?.name ?? null)
+        : (nameById.get(c.personaId) ?? null),
+      lastMessage: c.messages[0]
+        ? {
+            role: c.messages[0].role as ChatMessage['role'],
+            content: c.messages[0].content,
+            createdAt: c.messages[0].createdAt,
+          }
+        : null,
+      updatedAt: c.updatedAt,
+    }));
+  }
+
+  /** #41 대화 삭제(소유자만, ownerMatches 불일치 404). 메시지는 onDelete:Cascade로 함께 삭제 */
+  async remove(conversationId: string, owner: OwnerContext) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation || !ownerMatches(conversation, owner)) {
+      throw new NotFoundException('대화를 찾을 수 없습니다.');
+    }
+    await this.prisma.conversation.delete({ where: { id: conversationId } });
   }
 
   /**

@@ -21,6 +21,15 @@ export class CreateConversationDto implements CreateConversationRequest {
   personaId!: string;
 }
 
+/** #41 GET /conversations/list · DELETE /conversations/:id 쿼리 — 소유 식별자만.
+ *  로그인이면 쿠키 userId가 우선하므로 browserId optional(비로그인 폴백, #23). */
+export class OwnerQueryDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  browserId?: string;
+}
+
 /** GET /conversations 쿼리 */
 export class GetConversationQueryDto {
   // #40 로그인이면 쿠키 userId가 우선하므로 optional(비로그인 폴백 식별자, #23).

@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Post,
@@ -16,6 +18,7 @@ import {
   AppendMessageDto,
   CreateConversationDto,
   GetConversationQueryDto,
+  OwnerQueryDto,
   ReplaceMessagesDto,
   SummarizeDto,
 } from './dto/conversation.dto';
@@ -39,6 +42,14 @@ export class ConversationsController {
   @UseGuards(OptionalJwtGuard)
   create(@Body() body: CreateConversationDto, @Req() req: OwnedRequest) {
     return this.conversations.getOrCreate(resolveOwner(req, body.browserId), body.personaId);
+  }
+
+  /** #41 소유자 대화 목록(인박스) — 최신순, 마지막 메시지·캐릭터명 포함.
+   *  리터럴 'list'는 단건 GET '/'·param 라우트(:id/*)와 경로가 겹치지 않는다(별도 세그먼트). */
+  @Get('list')
+  @UseGuards(OptionalJwtGuard)
+  list(@Query() query: OwnerQueryDto, @Req() req: OwnedRequest) {
+    return this.conversations.listOwned(resolveOwner(req, query.browserId));
   }
 
   /** 소유자 대화 + 메시지(시간순) 복원. 없으면 404 → 프론트는 새 대화로 시작 */
@@ -70,5 +81,13 @@ export class ConversationsController {
   @UseGuards(OptionalJwtGuard)
   summarize(@Param('id') id: string, @Body() body: SummarizeDto, @Req() req: OwnedRequest) {
     return this.conversations.summarizeIfNeeded(id, resolveOwner(req, body.browserId));
+  }
+
+  /** #41 대화 삭제(소유자만, 비소유 404). 메시지는 cascade로 함께 삭제 */
+  @Delete(':id')
+  @UseGuards(OptionalJwtGuard)
+  @HttpCode(204)
+  remove(@Param('id') id: string, @Query() query: OwnerQueryDto, @Req() req: OwnedRequest) {
+    return this.conversations.remove(id, resolveOwner(req, query.browserId));
   }
 }
