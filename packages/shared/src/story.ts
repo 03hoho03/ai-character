@@ -79,3 +79,29 @@ export interface Story {
 
 /** 런타임 스탯 상태 — { [statName]: number }. StorySession.statValues. */
 export type StatValues = Record<string, number>;
+
+/**
+ * #49 플레이 세션 영속 contract — StorySession(Conversation의 스토리판) HTTP 단일 출처.
+ * 날짜는 JSON 직렬화 형태(ISO 문자열) 기준. statValues는 생성 시 Stat.initialValue로 초기화된다.
+ */
+export interface StorySessionRecord {
+  id: string;
+  storyId: string;
+  startSettingId: string;
+  /** 현재 스탯 상태 { [statName]: number } — 생성 시 시작설정 Stat.initialValue로 초기화 */
+  statValues: StatValues;
+  /** 도달한 엔딩 id(null=진행중). #51 엔딩 평가 전까지 항상 null */
+  endedWith: string | null;
+  /** ownerContext 이중축 — 로그인 userId / 비로그인 browserId(둘 중 하나만 set) */
+  browserId?: string | null;
+  userId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** POST /story-sessions 요청 — 세션 생성(get-or-create는 후속). browserId는 비로그인 폴백(로그인이면 쿠키 userId 우선). */
+export interface CreateStorySessionRequest {
+  browserId?: string;
+  storyId: string;
+  startSettingId: string;
+}
