@@ -144,3 +144,21 @@ export interface CreateStorySessionRequest {
   storyId: string;
   startSettingId: string;
 }
+
+/** POST /story-sessions/:id/turn 요청(#50) — 플레이 한 턴. */
+export interface TurnStorySessionRequest {
+  browserId?: string;
+  message: string;
+}
+
+/**
+ * POST /story-sessions/:id/turn 응답(#50/#51) — 모델 reply + 검증·clamp된 statValues + 엔딩.
+ * ended=true면 ending(resultText)이 채워지고 세션은 종료(endedWith 영속). rejectedKeys=거부된 모델 스탯 키.
+ */
+export interface StoryTurnResult {
+  reply: string;
+  statValues: StatValues;
+  rejectedKeys: string[];
+  ended: boolean;
+  ending: { id: string; name: string; resultText: string } | null;
+}

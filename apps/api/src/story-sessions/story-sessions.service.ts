@@ -10,10 +10,14 @@ import {
   applyStatDeltas,
   buildStoryPrompt,
   buildStoryResponseSchema,
+  evaluateEndings,
   type ChatMessage,
+  type EvaluableEnding,
   type StartSettingDef,
   type StatValues,
   type Story as StoryDomain,
+  type StoryTurnResult,
+  type TriggeredEnding,
 } from '@ai-character/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { type OwnerContext, ownerMatches, ownerWhere } from '../auth/owner';
@@ -69,19 +73,20 @@ export class StorySessionsService {
   }
 
   /**
-   * #50 play turn — 사용자 메시지 → 모델 structured 출력 → **서버 검증·clamp** → statValues 갱신.
-   * 신뢰경계: buildStoryPrompt/responseSchema는 서버 조회분으로 조립하고, 모델 statDeltas는
-   * applyStatDeltas로 화이트리스트+clamp 후에만 영속한다(§4.2). 엔딩 평가는 #51.
-   * 소유 불일치/세션·설정 부재는 모델 호출 전 404. 모델 JSON 파싱 실패는 방어(빈 reply, 스탯 불변).
+   * #50 play turn + #51 엔딩 평가 — 사용자 메시지 → 모델 structured 출력 → **서버 검증·clamp** →
+   * statValues 갱신 → 엔딩 결정론 평가(condition AND, 먼저충족 1개) → endedWith 영속·세션 종료.
+   * 신뢰경계: buildStoryPrompt/responseSchema는 서버 조회분으로 조립, 모델 statDeltas는
+   * applyStatDeltas로 화이트리스트+clamp 후에만 영속(§4.2). 엔딩 조건은 서버가 결정론적으로 평가(§4.3).
+   * 소유 불일치/세션·설정 부재는 모델 호출 전 404. 이미 종료된 세션은 모델 호출 없이 엔딩 반환.
    */
-  async turn(sessionId: string, owner: OwnerContext, message: string) {
+  async turn(sessionId: string, owner: OwnerContext, message: string): Promise<StoryTurnResult> {
     const session = await this.prisma.storySession.findUnique({ where: { id: sessionId } });
     if (!session || !ownerMatches(session, owner)) {
       throw new NotFoundException('세션을 찾을 수 없습니다.');
     }
     const startSetting = await this.prisma.startSetting.findUnique({
       where: { id: session.startSettingId },
-      include: { stats: true },
+      include: { stats: true, endings: true },
     });
     const story = await this.prisma.story.findUnique({ where: { id: session.storyId } });
     if (!startSetting || !story) {
@@ -89,6 +94,19 @@ export class StorySessionsService {
     }
 
     const current = (session.statValues ?? {}) as StatValues;
+
+    const endings = startSetting.endings ?? [];
+
+    // 이미 종료된 세션 — 모델 호출 없이 도달 엔딩을 반환(중복 진행 방지, §4.3 "엔딩 하나만").
+    if (session.endedWith) {
+      return {
+        reply: '',
+        statValues: current,
+        rejectedKeys: [],
+        ended: true,
+        ending: this.lookupEnding(endings, session.endedWith),
+      };
+    }
     // 서버 조회분으로만 프롬프트 재조립(클라 입력 무신뢰, #23). Prisma Json은 도메인 타입으로 취급.
     const prompt = buildStoryPrompt(
       story as unknown as StoryDomain,
@@ -130,12 +148,24 @@ export class StorySessionsService {
 
     // 모델 statDeltas를 화이트리스트+clamp 후에만 적용(§4.2 신뢰경계).
     const { statValues, rejectedKeys } = applyStatDeltas(current, startSetting.stats, rawDeltas);
+
+    // #51 엔딩 결정론 평가 — 갱신된 스탯으로 condition AND 평가, 먼저충족 1개. 충족 시 세션 종료.
+    const ending = evaluateEndings(statValues, endings as unknown as EvaluableEnding[]);
     await this.prisma.storySession.update({
       where: { id: sessionId },
-      data: { statValues },
+      data: { statValues, ...(ending ? { endedWith: ending.id } : {}) },
     });
 
-    return { reply, statValues, rejectedKeys };
+    return { reply, statValues, rejectedKeys, ended: ending !== null, ending };
+  }
+
+  /** 도달한 endedWith id를 endings에서 찾아 표시용으로 변환. 없으면 null(엔딩 삭제 등). */
+  private lookupEnding(
+    endings: { id: string; name: string; resultText: string }[],
+    endedWith: string,
+  ): TriggeredEnding | null {
+    const e = endings.find((x) => x.id === endedWith);
+    return e ? { id: e.id, name: e.name, resultText: e.resultText } : null;
   }
 
   /** Gemini 응답 텍스트 → { reply?, statDeltas? } 방어 파싱. 실패/비객체는 null. */

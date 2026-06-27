@@ -59,7 +59,13 @@ export {
   type StorySchema,
   type StorySchemaType,
 } from './story-prompt';
-export { applyStatDeltas, type ApplyStatDeltasResult } from './story-runtime';
+export {
+  applyStatDeltas,
+  evaluateEndings,
+  type ApplyStatDeltasResult,
+  type EvaluableEnding,
+  type TriggeredEnding,
+} from './story-runtime';
 export type {
   StoryVisibility,
   StatDef,
@@ -75,6 +81,8 @@ export type {
   UpdateStoryRequest,
   StorySessionRecord,
   CreateStorySessionRequest,
+  TurnStorySessionRequest,
+  StoryTurnResult,
 } from './story';
 export {
   SUMMARY_TURN_THRESHOLD,

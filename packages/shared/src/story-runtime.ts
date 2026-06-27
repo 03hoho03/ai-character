@@ -3,7 +3,7 @@
  * 신뢰 경계(CLAUDE.md #23, 설계 §4.2): 모델이 낸 statDeltas를 **무검증 신뢰하지 않는다**.
  * 정의된 스탯명만 화이트리스트, 숫자(유한)만 채택, min/max로 clamp. 그 외는 rejectedKeys로 수집.
  */
-import type { StatDef, StatValues } from './story';
+import type { EndingRule, StatDef, StatValues } from './story';
 
 export interface ApplyStatDeltasResult {
   /** 갱신된 스탯 상태(정의된 스탯만, 전부 정수, clamp 적용) */
@@ -58,4 +58,61 @@ export function applyStatDeltas(
   }
 
   return { statValues, rejectedKeys };
+}
+
+/** #51 엔딩 평가 입력 — 정규화 Ending(condition은 [{stat,op,value}] AND 규칙). */
+export interface EvaluableEnding {
+  id: string;
+  name: string;
+  resultText: string;
+  condition: EndingRule[];
+  priority: number;
+}
+
+/** #51 트리거된 엔딩(플레이어 표시용). */
+export interface TriggeredEnding {
+  id: string;
+  name: string;
+  resultText: string;
+}
+
+/** 단일 조건절 `스탯 op 값` 평가. 정의 안 된 스탯 참조는 미충족(false). */
+function ruleHolds(rule: EndingRule, statValues: StatValues): boolean {
+  const v = statValues[rule.stat];
+  if (typeof v !== 'number') return false;
+  switch (rule.op) {
+    case '>=':
+      return v >= rule.value;
+    case '<=':
+      return v <= rule.value;
+    case '>':
+      return v > rule.value;
+    case '<':
+      return v < rule.value;
+    case '==':
+      return v === rule.value;
+    default:
+      return false;
+  }
+}
+
+/**
+ * #51 엔딩 결정론 평가(설계 §4.3). 각 엔딩 condition은 AND. 충족된 것 중 **priority 낮은 1개만** 트리거.
+ * - condition이 빈 배열인 엔딩은 절대 트리거하지 않는다(무조건 발동 방지).
+ * - 동시 충족 시 priority 오름차순 + 안정 정렬(입력 순서)로 결정론적 단일 선택.
+ * @returns 트리거된 엔딩(표시용) 또는 null(미충족).
+ */
+export function evaluateEndings(
+  statValues: StatValues,
+  endings: EvaluableEnding[],
+): TriggeredEnding | null {
+  const matched = endings
+    .map((e, index) => ({ e, index }))
+    .filter(
+      ({ e }) => e.condition.length > 0 && e.condition.every((r) => ruleHolds(r, statValues)),
+    );
+  if (matched.length === 0) return null;
+  matched.sort((a, b) => a.e.priority - b.e.priority || a.index - b.index);
+  const { e } = matched[0];
+  return { id: e.id, name: e.name, resultText: e.resultText };
 }
