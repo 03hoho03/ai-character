@@ -79,3 +79,42 @@ export interface Story {
 
 /** 런타임 스탯 상태 — { [statName]: number }. StorySession.statValues. */
 export type StatValues = Record<string, number>;
+
+/**
+ * POST /stories 요청(#44) — Story 본체 + 중첩 StartSetting/Stat/Ending 일괄 생성.
+ * id는 서버가 cuid로 부여(클라 미제공). browserId는 비로그인 폴백 소유 식별자(로그인이면 쿠키 userId 우선, #23).
+ * contentRating은 한번 설정 후 불변(#44 등록 탭) — 갱신은 UpdateStoryRequest에서 제외.
+ */
+export interface CreateStoryRequest {
+  browserId?: string;
+  profileImage?: string;
+  name: string;
+  tagline: string;
+  promptTemplateId?: string;
+  storyInfo: string;
+  developmentExamples: DevelopmentExample[];
+  shortcuts: Shortcut[];
+  contentRating?: ContentRating;
+  visibility?: StoryVisibility;
+  commentsClosed?: boolean;
+  startSettings: StartSettingDef[];
+}
+
+/**
+ * PATCH /stories/:id 요청(#44) — 부분 갱신(소유자만). id는 경로에서 받는다.
+ * contentRating은 의도적으로 제외 — 한번 설정 후 불변(#44 등록 탭).
+ * 중첩 startSettings를 보내면 자식(StartSetting/Stat/Ending) 전체 교체 갱신.
+ */
+export interface UpdateStoryRequest {
+  browserId?: string;
+  profileImage?: string;
+  name?: string;
+  tagline?: string;
+  promptTemplateId?: string;
+  storyInfo?: string;
+  developmentExamples?: DevelopmentExample[];
+  shortcuts?: Shortcut[];
+  visibility?: StoryVisibility;
+  commentsClosed?: boolean;
+  startSettings?: StartSettingDef[];
+}
