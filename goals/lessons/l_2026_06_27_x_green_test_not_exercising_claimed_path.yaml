@@ -1,0 +1,81 @@
+lesson_id: l_2026_06_27_x_green_test_not_exercising_claimed_path
+category: verifier_weakness
+title: "GREEN 테스트가 criterion이 겨눈 속성/경로를 실제로 안 탐 — 프록시 단언이 독립 verify에서 적발됨"
+created_at: "2026-06-27"
+updated_at: "2026-06-27"
+
+# 회고 모드(정식 run.yaml 아님). source = dev-cycle verify_report + 본 세션 독립 verifier 적발 기록.
+sources:
+  - run_id: dev-cycle/2026_06_27_story-schema (#43)
+    file_ref: "dev-cycle/2026_06_27_story-schema/verify_report.md#Iteration 1 notes"
+    quote: |
+      weak_check 1건(경미): story-schema.spec.ts가 PRD 기준2의 @@index([userId])/([browserId])를
+      *미단언* — 실제 스키마엔 존재하나 후속 제거 시 GREEN 잔존 위험. (컬럼 nullable/Json/정규화는
+      내용 단언했으나 criterion이 명시한 구조요소 하나를 빠뜨림)
+    observed_at: "2026-06-27"
+  - run_id: dev-cycle/2026_06_27_story-delta-clamp (#50)
+    file_ref: "dev-cycle/2026_06_27_story-delta-clamp/verify_report.md#Iteration 1 권고"
+    quote: |
+      story-runtime.spec의 { __proto__: 1 }는 객체 리터럴 특수문법이라 own key가 아니어서 그 단언은
+      __proto__-as-own-key 경로를 실제로 타지 않음. 프로덕션 경로는 JSON.parse('{"__proto__":...}')라
+      own-key가 됨 — 테스트가 방어하려는 바로 그 경로를 미타격. (코드 자체는 Map 조회로 견고했음)
+    observed_at: "2026-06-27"
+  - run_id: "#51 엔딩 결정론 평가 (독립 verifier 적발, 본 세션)"
+    file_ref: "apps/api/test/story-sessions-turn.http.spec.ts (#51 엔딩 케이스 — clamp 격리 추가 전)"
+    quote: |
+      clamp후 평가를 *격리 검증*하진 않음 — http 테스트의 조건 >=100은 clamp값 100·raw값 115 모두
+      충족이라 'clamp된 값으로 평가한다'는 속성을 분리해 증명하지 못함. (raw로 평가해도 GREEN이라
+      회귀 방어 0). → max 50·delta+100·조건>=80(raw 충족/clamp 미충족) 케이스 추가로 격리.
+    observed_at: "2026-06-27"
+
+n_cycles: 3   # #43/#50/#51 = 3개 독립 dev-cycle. 단 동일 세션(아래 isolation_caveat).
+
+pattern:
+  trigger: "구현자가 test-first로 성공 기준에 매핑되는 테스트를 작성해 GREEN을 얻되, 단언이 *프록시* — criterion이 겨눈 정확한 속성/실행 경로를 실제로 통과시키지 않음"
+  symptom: "전부 GREEN인데 독립 verifier가 weak_check로 적발: (a) criterion이 명시한 구조요소 누락(#43 @@index), (b) 테스트가 프로덕션과 다른 경로를 탐(#50 객체리터럴 __proto__ ≠ JSON.parse own-key), (c) 조건이 검증 대상 속성을 격리 못 함(#51 임계값이 clamp 전·후 값 모두 충족)"
+  failure_mode: "겨냥된 속성/경로를 약화하는 *미래 회귀*가 GREEN으로 잔존 — 인덱스 제거/프로토타입 방어 누락/clamp 우회가 테스트 그물 밖으로 샘. 적발 기제는 오직 처음-보는-눈 독립 verify(dev-cycle Phase 4)였음(자가 GREEN으로는 미감지)"
+
+seed_taxonomy_match: weak_check
+
+confidence: weak
+confidence_reason: |
+  n=3 동일 trigger(test-first GREEN이나 겨냥 속성/경로 미타격) + 동일 symptom(독립 verify가 weak_check 적발).
+  matrix상 n≥2+유사형은 moderate이나, 3건 모두 *동일 세션*이라 독립성 할인 → weak 고정.
+  형태가 3 하위형(구조요소 누락/경로 divergence/조건 비격리)으로 다양해 strong 아님.
+  sibling: l_2026_06_18_x_config_presence_only_assertion(존재-only 단언)은 같은 메타가족의 더 좁은 사례.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    dev-cycle Phase 4(독립 verify)에 자문 항목 추가 — "GREEN이 곧 커버는 아니다":
+    1) criterion이 명시한 각 구조요소(인덱스/제약/키)가 *개별 단언*되는가(누락 시 weak_check).
+    2) 테스트가 *프로덕션과 동일한 경로*를 타는가 — mock/리터럴/입력형이 실제 런타임 입력
+       (예: JSON.parse 산물 vs 객체 리터럴)과 다르면 방어 경로 미타격.
+    3) 단언 대상 속성이 *격리*되는가 — 조건/입력이 검증 속성 없이도 통과하면(pre/post 값 모두 충족 등)
+       그 속성을 증명하지 못함. "이 속성을 끄면 RED인가?"로 점검.
+    confidence moderate 도달 시 goal-verify/dev-cycle SKILL Phase 4에 직접 반영 검토.
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "다음 dev-cycle Phase 2: 테스트가 criterion의 *각 요소*를 개별 단언하는지, 프로덕션 입력형과 같은 경로를 타는지 점검"
+  - "다음 dev-cycle Phase 4 verify: 'GREEN이지만 이 속성/경로를 끄면 RED인가?' 자문 — 아니면 weak_check 반려"
+
+remaining_ambiguity:
+  - "동일 세션 적발이라 verifier 독립성이 부분적 — 다른 세션 재검 시 신뢰 상승 필요"
+  - "(b)/(c) 하위형을 (a)와 한 lesson으로 묶을지 분리할지 — 현재 '겨냥 경로 미타격'으로 통합"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    구현·verify·learn이 같은 세션. 단 각 weak_check는 *별도 독립 verifier 서브에이전트*가 적발했고
+    메인이 in-cycle에 보강(인덱스 단언/__proto__ JSON.parse 케이스/clamp 격리 케이스)해 닫음 —
+    적발-보강 루프가 작동한 점은 긍정. 다른 세션 재검 시 confidence 재평가.

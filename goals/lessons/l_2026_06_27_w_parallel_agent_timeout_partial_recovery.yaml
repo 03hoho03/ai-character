@@ -1,0 +1,64 @@
+lesson_id: l_2026_06_27_w_parallel_agent_timeout_partial_recovery
+category: collab_antipattern
+title: "병렬 에이전트 스트림 타임아웃 → worktree에 부분 산출(RED 테스트) 잔존 → 죽었다 보지 말고 인수 복구"
+created_at: "2026-06-27"
+updated_at: "2026-06-27"
+
+# 회고 모드. source = 본 세션 Agent 결과 + worktree git 상태 관측.
+sources:
+  - run_id: "sp_2026_06_27_story_mode / #50 delta 검증 (worktree 에이전트)"
+    file_ref: "본 세션 Agent 결과: 'API Error: Stream idle timeout - partial response received', subagent_tokens 0, tool_uses 36"
+    quote: |
+      #50 에이전트가 최대위험 티켓에서 36 tool_use 후 스트림 idle 타임아웃 — 최종 응답 유실(tokens 0).
+      worktree git status 확인 결과 RED 테스트 2개(story-runtime.spec.ts, story-sessions-turn.http.spec.ts)는
+      작성됐고 controller/service/story-runtime.ts 구현은 미시작(Phase 2 RED에서 끊김).
+      메인이 드래프트 테스트를 채택(품질 양호 — __proto__ 오염·NaN/Infinity 거부·clamp 경계 단언)하고
+      직접 구현 완성 → 독립 verify PASS.
+    observed_at: "2026-06-27"
+
+n_cycles: 1
+
+pattern:
+  trigger: "병렬 worktree 에이전트가 큰/고위험 티켓에서 장시간 실행(다수 tool_use)"
+  symptom: "'Stream idle timeout - partial response received' + subagent_tokens 0(최종 응답 유실). 그러나 worktree 작업트리에는 부분 산출이 커밋 전 상태로 잔존 — 이 경우 Phase 2 RED 테스트 파일은 쓰였고 구현만 미시작"
+  failure_mode: "타임아웃을 '티켓 실패=전량 폐기'로 오인하면 쓸 만한 부분 산출(특히 신뢰경계 엣지를 잘 짠 RED 테스트)을 버림. 또는 죽은 에이전트를 SendMessage로 무리하게 재개하려다 컨텍스트 유실 악화"
+
+seed_taxonomy_match: ""   # 신규 코드 후보: agent_turn_interruption_recovery
+
+confidence: tentative
+confidence_reason: |
+  n=1 단발. 관련: l_2026_06_22_w_subagent_surrogate_serialization_break(둘 다 병렬 에이전트 턴 중단 +
+  중간 산출 유실 가족, 단 기제 다름 — 그쪽은 lone surrogate→API 400, 이쪽은 stream idle timeout).
+  복구가 성공한 단일 사례라 패턴은 가설 수준.
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    병렬 에이전트가 타임아웃/에러로 최종 응답을 못 줄 때 복구 절차:
+    1) 죽었다 단정 말고 worktree(.claude/worktrees/agent-* 또는 feat/* 브랜치) git status로 부분 산출 확인.
+    2) RED 테스트만 있고 구현 미시작이면 — 테스트 품질 검토 후 채택, 메인이 직접 구현 완성
+       (특히 고위험 티켓은 메인 인수가 오히려 신중함 확보에 유리).
+    3) SendMessage 재개는 컨텍스트가 살아있고 단순 이어쓰기일 때만; 구현 전체가 남았으면 인수가 안전.
+    4) 인수 후에도 독립 verify는 동일하게 수행(인수했다고 검증 생략 금지).
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "병렬 에이전트 타임아웃 시: worktree 부분 산출 회수 우선, 고위험 티켓은 메인 인수 고려"
+  - "에이전트 완료 보고가 없어도 산출물(테스트/커밋)을 1차 확인 후 다음 단계 결정"
+
+remaining_ambiguity:
+  - "타임아웃 임계(어떤 tool_use 수/시간에서 위험)와 재개 vs 인수 분기점이 데이터 1건이라 미정"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    메인 오케스트레이터가 직접 복구한 사례. 단일 관측이라 가설. 재발 시 재개 vs 인수 분기 기준 정밀화.

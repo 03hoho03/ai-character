@@ -1,0 +1,72 @@
+lesson_id: l_2026_06_27_w_worktree_agent_branch_integration
+category: collab_antipattern
+title: "병렬 worktree 에이전트 산출이 사이드 브랜치(feat/* in 메인 트리)로 들어와 명시적 통합(ff-merge·브랜치 전환 확인) 필요"
+created_at: "2026-06-27"
+updated_at: "2026-06-27"
+
+# 회고 모드. source = 본 세션 git 상태 관측(Agent isolation:worktree 사용 오케스트레이션).
+sources:
+  - run_id: "sp_2026_06_27_story_mode / #47 제작UI (worktree 에이전트)"
+    file_ref: "본 세션 git 관측: git status -sb → '## feat/47-story-form', main 미동기화"
+    quote: |
+      #47 worktree 에이전트가 반환 후 git status가 main이 아니라 feat/47-story-form 브랜치를 가리킴.
+      naive `git push`가 'Everything up-to-date' 출력 → main 미반영 혼동. checkout main + merge --ff-only
+      feat/47-story-form로 통합해야 했음.
+    observed_at: "2026-06-27"
+  - run_id: "sp_2026_06_27_story_mode / #48 플레이UI (worktree 에이전트)"
+    file_ref: "본 세션 git 관측: git status -sb → '## feat/48-story-play-ui'"
+    quote: |
+      #48도 동일 — feat/48-story-play-ui 브랜치에 커밋, main 미동기화. ff-merge로 통합.
+      (반면 #44/#45/#49/#50 일부는 진짜 .claude/worktrees/agent-*에 격리돼 merge --no-ff +
+      worktree remove 경로였음 — 통합 기제가 에이전트마다 달라짐.)
+    observed_at: "2026-06-27"
+
+n_cycles: 2   # #47/#48 동일 symptom. (no-ff 격리 worktree 사례는 관련 하위형, 미가산)
+
+pattern:
+  trigger: "Agent 도구를 isolation:worktree로 병렬 구현에 사용하고, 에이전트가 커밋 후 반환"
+  symptom: "에이전트 산출이 메인 워킹트리에 체크아웃된 feat/* 브랜치로 들어와 현재 브랜치가 main이 아님 + main이 뒤처짐. 일부는 진짜 격리 worktree(.claude/worktrees/agent-*)라 통합 기제(ff-merge vs no-ff merge + worktree remove)가 에이전트마다 다름. naive git push가 'up-to-date'로 오인 유발"
+  failure_mode: "통합 누락·잘못된 브랜치에서 push·어느 커밋이 main에 반영됐는지 추적 상실 위험. 매 에이전트 반환 후 git status로 브랜치 위치를 명시 확인하지 않으면 사일런트 누락"
+
+seed_taxonomy_match: ""   # 신규 코드 후보: orchestration_integration_gap
+
+confidence: weak
+confidence_reason: |
+  n=2 동일 trigger(isolation:worktree 병렬 에이전트)+동일 symptom(사이드 브랜치 산출, main 미동기화).
+  동일 세션이라 독립성 할인 → moderate 아닌 weak. 단 기제가 2형(feat/* in 메인트리 vs 격리 worktree)이라
+  형태 다양성도 strong을 막음. 관련: l_2026_06_22_w_subagent_surrogate_serialization_break(둘 다 병렬
+  서브에이전트 오케스트레이션 통합 위험 가족).
+
+counter_evidence: []
+
+proposed_patch:
+  target: "next_goal_context"
+  kind: "text_change"
+  diff_hint: |
+    병렬 worktree 에이전트 오케스트레이션 시 통합 프로토콜을 *착수 전* 고정:
+    1) 각 에이전트 반환 직후 `git status -sb` + `git worktree list`로 산출 위치 확인
+       (feat/* in 메인트리 vs .claude/worktrees/agent-*).
+    2) 통합 기제를 위치별로: 메인트리 브랜치 → checkout main + merge --ff-only; 격리 worktree →
+       merge --no-ff <worktree-branch> + worktree remove + branch -D.
+    3) 통합 후 `git log origin/main..HEAD`로 미푸시 커밋 확인(‘up-to-date’ 오인 방지).
+    4) shared 공통파일(index.ts 등)은 additive 충돌 예상 — 순차 머지로 해소.
+  applied: false
+  applied_at: ""
+  applied_by: ""
+
+applies_to_next_goal:
+  - "병렬 에이전트 fan-out 전: 통합 계획(브랜치 위치 확인·ff vs no-ff·worktree cleanup·미푸시 확인) 수립"
+  - "각 에이전트 반환마다 git status로 위치 검증 후 통합 — '커밋했다'는 보고만 믿지 말 것"
+
+remaining_ambiguity:
+  - "isolation:worktree가 왜 어떤 때는 메인트리 feat/* 브랜치로, 어떤 때는 .claude/worktrees/로 가는지 결정 요인 불명 — 하네스 동작 관찰 필요"
+
+not_actionable_reason: ""
+
+metadata:
+  created_by: "learn skill"
+  learn_version: "v1"
+  isolated_from_verify: false
+  isolation_caveat: |
+    본 세션 오케스트레이터(메인)가 직접 관측·통합한 사례라 executor self-report가 아닌 1차 git 상태가 source.
+    단 동일 세션 단일 오케스트레이터 관측이라 다른 세션/사용자 재현 시 신뢰 상승.
