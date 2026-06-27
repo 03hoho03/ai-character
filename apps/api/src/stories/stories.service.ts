@@ -53,7 +53,11 @@ export class StoriesService {
     });
   }
 
-  /** 단건. 소유자거나 공개(public/link)면 반환, 아니면 404(비공개 타인 것은 존재 비노출) */
+  /**
+   * 단건. 소유자면 항상 반환. 비소유자는 visibility !== 'private'일 때만(즉 public/link).
+   * link는 설계상 id가 곧 공유링크 → 별도 토큰 없이 직접 id 조회 허용(public과 동일 취급).
+   * private 타인 것은 존재를 노출하지 않고 404.
+   */
   async getOne(id: string, owner: OwnerContext) {
     const story = await this.prisma.story.findUnique({ where: { id }, include: STORY_INCLUDE });
     if (!story || (!ownerMatches(story, owner) && story.visibility === 'private')) {

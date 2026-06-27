@@ -234,6 +234,28 @@ describe('stories 제작 API (#44 HTTP 계약)', () => {
     expect(res.status).toBe(200);
   });
 
+  // link 공개범위는 설계상 id가 곧 공유링크 → 비소유도 직접 id 조회 가능(public과 동일). 의도 박제.
+  it('GET /stories/:id link 공개범위는 비소유도 → 200 (id=공유링크 설계)', async () => {
+    storyFindUnique.mockResolvedValueOnce({
+      id: 'story-link',
+      browserId: 'someone',
+      userId: null,
+      visibility: 'link',
+    });
+    const res = await request(app.getHttpServer())
+      .get('/stories/story-link')
+      .query({ browserId: 'b1' });
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /stories/:id 미존재 → 404', async () => {
+    storyFindUnique.mockResolvedValueOnce(null);
+    const res = await request(app.getHttpServer())
+      .get('/stories/nope')
+      .query({ browserId: 'b1' });
+    expect(res.status).toBe(404);
+  });
+
   // 라우트 순서 회귀: GET /stories(목록) vs GET /stories/:id(단건) 분리.
   it('라우트 분리: GET /stories는 목록(findMany), GET /stories/:id는 단건(findUnique)', async () => {
     storyFindMany.mockResolvedValueOnce([]);
@@ -286,6 +308,54 @@ describe('stories 제작 API (#44 HTTP 계약)', () => {
       .patch('/stories/story-x')
       .send({ browserId: 'b1', name: 'x' });
     expect(res.status).toBe(404);
+  });
+
+  it('PATCH /stories/:id 로그인 소유자(userId 일치) → 200, browserId 위조 무시', async () => {
+    const cookie = await loginCookie();
+    storyFindUnique.mockResolvedValueOnce({
+      id: 'story-u',
+      browserId: null,
+      userId: 'user-1',
+      visibility: 'private',
+      contentRating: 'all',
+    });
+    storyUpdate.mockResolvedValueOnce({ id: 'story-u' });
+
+    const res = await request(app.getHttpServer())
+      .patch('/stories/story-u')
+      .set('Cookie', cookie)
+      .send({ browserId: 'someone-else', name: '갱신' });
+
+    expect(res.status).toBe(200);
+    expect(storyUpdate.mock.calls[0][0].data.name).toBe('갱신');
+  });
+
+  it('PATCH /stories/:id 잘못된 visibility → 400 (Update DTO @IsIn 거부)', async () => {
+    const res = await request(app.getHttpServer())
+      .patch('/stories/story-x')
+      .send({ browserId: 'b1', visibility: 'everyone' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /stories/:id 잘못된 중첩 엔딩 op → 400 (Update DTO ValidateNested 거부)', async () => {
+    const res = await request(app.getHttpServer())
+      .patch('/stories/story-x')
+      .send({
+        browserId: 'b1',
+        startSettings: [
+          {
+            name: '분기',
+            prologue: 'p',
+            startSituation: 's',
+            suggestedReplies: [],
+            stats: [],
+            endings: [
+              { name: 'e', condition: [{ stat: 'x', op: '!=', value: 1 }], resultText: 'r' },
+            ],
+          },
+        ],
+      });
+    expect(res.status).toBe(400);
   });
 
   it('DELETE /stories/:id 소유자 → 204', async () => {
