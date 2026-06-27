@@ -1,0 +1,102 @@
+sprint:
+  id: sp_2026_06_27_story_mode
+  milestone_number: 6
+  goal: >
+    크랙 스토리 모드(인터랙티브 픽션)의 핵심 루프(제작→플레이→스탯 변화→엔딩 달성)를
+    MVP로 완결한다 — 스토리·시작설정·스탯·엔딩 + delta 엔진/임계값 평가, 서버 재조립 신뢰경계 준수.
+  length: open
+  execution: dependency-lane-parallel
+  design_doc: docs/story-mode-design.md
+
+locked_decisions:
+  - 스탯 갱신: 모델이 Gemini structured output으로 delta 출력 (서버 검증 후 적용)
+  - 엔딩 조건: 스탯 임계값 규칙(condition Json [{stat,op,value}] AND), 서버 결정론 평가
+  - 스키마: Stat=정규화 테이블 / Ending.condition=Json / StorySession.statValues=Json / dev예시·추천답변·shortcuts=Json
+  - MVP 범위: 다중 StartSetting + 전체 PATCH 포함 (사용자 break — 좁히지 않음)
+  - 신뢰경계: 서버 재조립(buildStoryPrompt) + delta 서버검증 (CLAUDE.md #23)
+
+included:
+  - issue: 43
+    title: 스토리 스키마 토대 (Story/StartSetting/Stat/Ending/StorySession)
+    size: medium
+    dependency: []
+    lane: foundation
+  - issue: 44
+    title: 스토리 제작 API (CRUD + OwnerContext + DTO + HTTP 계약 테스트)
+    size: large
+    dependency: [43]
+    lane: A-authoring
+    risk: 중첩 4엔티티 + 전체 PATCH 미축소 → 사이클 경계 초과 가능(사용자가 범위 유지 선택)
+  - issue: 45
+    title: buildStoryPrompt 빌더 (shared 순수함수 + delta responseSchema)
+    size: medium
+    dependency: [43]
+    lane: B-play
+    note: structured output(responseSchema) 코드베이스 선례 0건 — SDK 계약 신규 도입
+  - issue: 49
+    title: "[46a] 플레이 세션 영속 (StorySession + statValues 초기화)"
+    size: medium
+    dependency: [43]
+    lane: B-play
+  - issue: 50
+    title: "[46b] delta 서버검증·clamp (화이트리스트 + min/max)"
+    size: medium
+    dependency: [43, 45, 49]
+    lane: B-play
+    risk: 최대 회귀 위험 — 모델 delta 무검증 신뢰 금지(§4.2). 엣지 테스트 필수
+  - issue: 51
+    title: "[46c] 엔딩 결정론 평가 (condition AND + 먼저충족 1개)"
+    size: medium
+    dependency: [50]
+    lane: B-play
+  - issue: 47
+    title: 스토리 제작 UI (MVP 4탭 폼)
+    size: large
+    dependency: [44]
+    lane: A-authoring
+    risk: 다중 StartSetting 동적 폼 미축소 → 상태관리 부담(사용자가 범위 유지 선택)
+  - issue: 48
+    title: 스토리 플레이 UI (스탯 HUD + 엔딩 화면 + 추천답변)
+    size: medium
+    dependency: [51]
+    lane: B-play
+
+decomposed_parent:
+  - issue: 46
+    status: needs-decomp (milestone 미할당)
+    children: [49, 50, 51]
+
+deferred:  # out_of_scope — 다음 차수 (issue 미생성)
+  - 키워드북 (lorebook 조건부 주입) — 2차
+  - 미디어 (분류×상황 이미지 자동표시) — 3차, 이미지 생성 API(#20/#39) 의존
+  - 단축어 (story-level ≤20) — 4차
+  - 다중 StartSetting 분기 UX 고도화 — 4차
+  - AI 자동생성 버튼(프롤로그/스토리정보/전개예시) — 4차
+
+cut: []  # cut=0 — backlog가 이미 MVP로 좁혀짐(사용자 confirm: 전원 include 확정)
+
+parallel_waves:
+  - wave: 0
+    issues: [43]
+    note: 단독 선행 — DB 마이그레이션 충돌 방지
+  - wave: 1
+    issues: [44, 45, 49]
+    note: "#43 후 3개 병렬 (제작API ∥ 빌더 ∥ 세션영속)"
+  - wave: 2
+    issues: [47, 50]
+    note: "47=44 후 / 50=45+49 후"
+  - wave: 3
+    issues: [51]
+    note: 50 후 엔딩 평가
+  - wave: 4
+    issues: [48]
+    note: 51 후 플레이 UI 수렴
+
+acceptance_gate:
+  normalization_accuracy: "8/8 confirm (100%)"
+  cut_plus_deferred_ratio: "deferred 5건(out_of_scope) — 사용자가 cut=0 명시 confirm"
+  pm_architect_conflicts: "2건 (#46 분할 granularity, #47 urgency/범위) — Phase 5 break"
+  out_of_scope_count: "5건 (키워드북/미디어/단축어/다중StartSetting UX/AI자동생성)"
+  user_attestation: true
+
+next_step: 각 included 티켓을 의존성 wave 순서로 /dev-cycle 실행 (wave0 #43부터)

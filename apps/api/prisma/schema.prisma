@@ -19,6 +19,10 @@ model User {
   // #31 소유 역방향 relation. 실제 소유검증 userId 전환은 #32(이 티켓은 스키마 토대만).
   characters    Character[]
   conversations Conversation[]
+
+  // #43 스토리 모드 소유 역방향 relation(nullable browserId 병행, 소유검증 전환은 #44).
+  stories       Story[]
+  storySessions StorySession[]
 }
 
 model Conversation {
@@ -68,7 +72,7 @@ model Character {
   speechStyle     String
   worldview       String
   greeting        String
-  exampleDialogue Json     // ExampleDialogueTurn[] — { user, model }
+  exampleDialogue Json // ExampleDialogueTurn[] — { user, model }
   prohibitions    Json? // string[] | null
   isPublic        Boolean  @default(false)
   // #25 발견 필터용 분류 메타데이터(프롬프트 미주입). category=단일, tags=다중(Postgres 스칼라 배열).
@@ -88,4 +92,116 @@ model Character {
   @@index([isPublic, category]) // #25 공개+카테고리 필터
   @@index([isPublic, contentRating]) // #26 공개+등급 필터
   @@index([tags], type: Gin) // #25 tags has 필터(배열 포함 검색)
+}
+
+// ============================================================================
+// #43 스토리 모드(인터랙티브 픽션) 토대. 설계: docs/story-mode-design.md.
+// 중심축 = StartSetting. 스탯·엔딩이 시작설정별로 스코프된다.
+// 잠긴 결정(sprint-pm Phase 5): Stat=정규화 테이블 / Ending.condition·statValues·
+// developmentExamples·suggestedReplies·shortcuts=Json / ownerContext=Character 이중축 복제.
+// ============================================================================
+
+model Story {
+  id                  String  @id @default(cuid())
+  profileImage        String?
+  name                String
+  tagline             String
+  // 스토리 설정 탭. 프롬프트 템플릿 선택 + 세계관/설정/등장인물 정보.
+  promptTemplateId    String?
+  storyInfo           String
+  // 전개 예시 { input, output }[] — Character.exampleDialogue 선례대로 Json(정규화 이득 없음).
+  developmentExamples Json
+  // 단축어 { label, command }[] (story-level ≤20).
+  shortcuts           Json
+  // #26 패턴 복제 — 'all' | 'adult'(등록 탭 미성년자 적절성). 한번 설정 후 불변은 #44 DTO에서 집행.
+  contentRating       String  @default("all")
+  // 'public' | 'private' | 'link'(크랙 공개범위). 기본 비공개.
+  visibility          String  @default("private")
+  commentsClosed      Boolean @default(false)
+
+  // ownerContext 이중축(Character 패턴 복제) — 로그인 userId / 비로그인 browserId.
+  browserId String?
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id])
+
+  startSettings StartSetting[]
+  sessions      StorySession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([browserId]) // 내 스토리 목록
+  @@index([userId]) // 계정 소유 스토리 목록
+  @@index([visibility, updatedAt]) // 공개 스토리 목록(최신순)
+}
+
+// 분기 시나리오 단위. 스탯·엔딩이 이 단위로 스코프된다(시작설정별 스탯 ≤7, 엔딩 ≤10).
+model StartSetting {
+  id               String  @id @default(cuid())
+  storyId          String
+  story            Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  name             String
+  prologue         String
+  startSituation   String
+  playGuide        String? // AI 비기억, 사용자에게만 보이는 가이드
+  // 추천 첫 답변 string[] (≤3).
+  suggestedReplies Json
+
+  stats   Stat[]
+  endings Ending[]
+
+  createdAt DateTime @default(now())
+
+  @@index([storyId])
+}
+
+// 스탯 = 정규화 테이블(호감도류 변수). #51 엔딩 결정론 평가가 타입 안전하게 min/max clamp 읽음.
+model Stat {
+  id             String       @id @default(cuid())
+  startSettingId String
+  startSetting   StartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+  name           String
+  initialValue   Int
+  minValue       Int
+  maxValue       Int
+
+  @@unique([startSettingId, name]) // 시작설정 내 스탯명 중복 금지
+  @@index([startSettingId])
+}
+
+// 엔딩. condition = Json 임계값 규칙 [{stat,op,value}] AND. 먼저 충족된 1개만 트리거(priority).
+model Ending {
+  id             String       @id @default(cuid())
+  startSettingId String
+  startSetting   StartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+  name           String
+  condition      Json
+  resultText     String
+  priority       Int          @default(0) // 동시충족 시 정렬 우선순위
+
+  @@index([startSettingId])
+}
+
+// 플레이 런타임 세션(Conversation의 스토리판). statValues = 런타임 가변 상태.
+model StorySession {
+  id             String  @id @default(cuid())
+  storyId        String
+  story          Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  startSettingId String
+  // 현재 스탯 상태 { [statName]: number } — 런타임 가변(정규화 이득 없음).
+  statValues     Json
+  // 도달한 엔딩 id(null=진행중). FK 아닌 약참조(Ending 삭제와 독립).
+  endedWith      String?
+
+  // ownerContext 이중축.
+  browserId String?
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([browserId])
+  @@index([userId])
+  @@index([storyId])
 }

@@ -51,6 +51,18 @@ export type ContentRating = 'all' | 'adult';
 
 export { PERSONA_TEMPLATES } from './personas';
 export { buildPersonaPrompt, type PersonaPrompt } from './persona-prompt';
+export type {
+  StoryVisibility,
+  StatDef,
+  EndingOp,
+  EndingRule,
+  EndingDef,
+  DevelopmentExample,
+  Shortcut,
+  StartSettingDef,
+  Story,
+  StatValues,
+} from './story';
 export {
   SUMMARY_TURN_THRESHOLD,
   SUMMARY_RECENT_TURNS,
