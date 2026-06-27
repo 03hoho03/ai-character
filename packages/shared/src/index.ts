@@ -72,6 +72,8 @@ export type {
   StatValues,
   CreateStoryRequest,
   UpdateStoryRequest,
+  StorySessionRecord,
+  CreateStorySessionRequest,
 } from './story';
 export {
   SUMMARY_TURN_THRESHOLD,

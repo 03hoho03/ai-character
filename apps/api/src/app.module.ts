@@ -8,6 +8,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { CharactersModule } from './characters/characters.module';
 import { StoriesModule } from './stories/stories.module';
 import { AuthModule } from './auth/auth.module';
+import { StorySessionsModule } from './story-sessions/story-sessions.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AuthModule } from './auth/auth.module';
     CharactersModule,
     StoriesModule,
     AuthModule,
+    StorySessionsModule,
   ],
   controllers: [AppController],
   providers: [
