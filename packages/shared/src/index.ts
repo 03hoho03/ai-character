@@ -70,6 +70,8 @@ export type {
   StartSettingDef,
   Story,
   StatValues,
+  CreateStoryRequest,
+  UpdateStoryRequest,
 } from './story';
 export {
   SUMMARY_TURN_THRESHOLD,
