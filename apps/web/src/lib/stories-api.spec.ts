@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateStoryRequest, Story } from '@ai-character/shared';
 import {
   createStory,
+  createStorySession,
   deleteStory,
   fetchOwnedStories,
   fetchStory,
+  fetchStorySession,
+  turnStorySession,
   updateStory,
 } from './stories-api';
 
@@ -158,6 +161,77 @@ describe('stories-api (#47)', () => {
     it('non-ok면 throw', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nf' }, 404));
       await expect(deleteStory('st-1', 'b1')).rejects.toThrow();
+    });
+  });
+
+  describe('createStorySession (#48)', () => {
+    it('POST /story-sessions 에 storyId/startSettingId/browserId 를 보낸다', async () => {
+      const session = { id: 'ss-1', storyId: 'st-1', startSettingId: 'set-1', statValues: {} };
+      fetchMock.mockResolvedValueOnce(jsonResponse(session));
+
+      const result = await createStorySession('st-1', 'set-1', 'b1');
+
+      expect(result).toEqual(session);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/story-sessions`);
+      expect((init as RequestInit).method).toBe('POST');
+      expect((init as RequestInit).credentials).toBe('include');
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body).toEqual({ storyId: 'st-1', startSettingId: 'set-1', browserId: 'b1' });
+    });
+
+    it('non-ok면 throw (진입 불가 전파)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nf' }, 404));
+      await expect(createStorySession('st-1', 'set-1', 'b1')).rejects.toThrow();
+    });
+  });
+
+  describe('fetchStorySession (#48)', () => {
+    it('GET /story-sessions/:id?browserId= 로 호출한다', async () => {
+      const session = { id: 'ss-1', storyId: 'st-1', startSettingId: 'set-1', statValues: {} };
+      fetchMock.mockResolvedValueOnce(jsonResponse(session));
+
+      const result = await fetchStorySession('ss-1', 'b1');
+
+      expect(result).toEqual(session);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/story-sessions/ss-1?browserId=b1`);
+      expect((init as RequestInit).credentials).toBe('include');
+    });
+
+    it('404/실패면 null (best-effort)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nf' }, 404));
+      expect(await fetchStorySession('ss-1', 'b1')).toBeNull();
+      fetchMock.mockRejectedValueOnce(new Error('network'));
+      expect(await fetchStorySession('ss-1', 'b1')).toBeNull();
+    });
+  });
+
+  describe('turnStorySession (#48)', () => {
+    it('POST /story-sessions/:id/turn 에 message/browserId 를 보내고 StoryTurnResult 를 반환한다', async () => {
+      const turnResult = {
+        reply: '답변',
+        statValues: { 호감도: 5 },
+        rejectedKeys: [],
+        ended: false,
+        ending: null,
+      };
+      fetchMock.mockResolvedValueOnce(jsonResponse(turnResult));
+
+      const result = await turnStorySession('ss-1', '안녕', 'b1');
+
+      expect(result).toEqual(turnResult);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toBe(`${BASE}/story-sessions/ss-1/turn`);
+      expect((init as RequestInit).method).toBe('POST');
+      expect((init as RequestInit).credentials).toBe('include');
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body).toEqual({ message: '안녕', browserId: 'b1' });
+    });
+
+    it('non-ok면 throw', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'err' }, 500));
+      await expect(turnStorySession('ss-1', '안녕', 'b1')).rejects.toThrow();
     });
   });
 });

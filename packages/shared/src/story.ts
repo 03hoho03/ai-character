@@ -10,6 +10,11 @@ export type StoryVisibility = 'public' | 'private' | 'link';
 
 /** 스탯 정의(정규화 테이블 Stat). 호감도류 변수. 시작설정별 ≤7. */
 export interface StatDef {
+  /**
+   * 영속 행 id(서버 응답에만 존재). #44/#47 생성 경로는 클라가 보내지 않으므로 optional —
+   * 서버가 GET /stories/:id 응답에 이미 포함해 반환하던 값을 #48 play UI가 소비하기 위해 박제한다.
+   */
+  id?: string;
   name: string;
   initialValue: number;
   minValue: number;
@@ -50,6 +55,12 @@ export interface Shortcut {
 
 /** 시작 설정(분기 시나리오 단위). 스탯·엔딩이 이 단위로 스코프된다. */
 export interface StartSettingDef {
+  /**
+   * 영속 행 id(서버 응답에만 존재). #44/#47 생성 경로는 클라가 보내지 않으므로 optional —
+   * 서버가 GET /stories/:id 응답에 이미 포함해 반환하던 값을 #48 play UI가 세션 생성
+   * (CreateStorySessionRequest.startSettingId)에 쓰기 위해 박제한다.
+   */
+  id?: string;
   name: string;
   prologue: string;
   startSituation: string;
