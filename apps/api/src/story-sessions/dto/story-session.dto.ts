@@ -24,3 +24,15 @@ export class GetStorySessionQueryDto {
   @IsNotEmpty()
   browserId?: string;
 }
+
+/** POST /story-sessions/:id/turn 본문 — 플레이 한 턴. message는 사용자 입력(#50). */
+export class TurnStorySessionDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  browserId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+}

@@ -59,6 +59,7 @@ export {
   type StorySchema,
   type StorySchemaType,
 } from './story-prompt';
+export { applyStatDeltas, type ApplyStatDeltasResult } from './story-runtime';
 export type {
   StoryVisibility,
   StatDef,
